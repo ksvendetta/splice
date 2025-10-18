@@ -15,6 +15,7 @@ export interface IStorage {
   updateSplice(id: string, splice: Partial<InsertSplice>): Promise<Splice | undefined>;
   deleteSplice(id: string): Promise<boolean>;
   deleteSplicesByCableId(cableId: string): Promise<void>;
+  checkSpliceConflict(cableId: string, startFiber: number, endFiber: number, excludeSpliceId?: string): Promise<Splice | null>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -110,6 +111,32 @@ export class DatabaseStorage implements IStorage {
         eq(splices.destinationCableId, cableId)
       )
     );
+  }
+
+  async checkSpliceConflict(cableId: string, startFiber: number, endFiber: number, excludeSpliceId?: string): Promise<Splice | null> {
+    const allSplices = await db.select().from(splices).where(
+      or(
+        eq(splices.sourceCableId, cableId),
+        eq(splices.destinationCableId, cableId)
+      )
+    );
+
+    for (const splice of allSplices) {
+      if (excludeSpliceId && splice.id === excludeSpliceId) {
+        continue;
+      }
+
+      const isSourceCable = splice.sourceCableId === cableId;
+      const spliceStart = isSourceCable ? splice.sourceStartFiber : splice.destinationStartFiber;
+      const spliceEnd = isSourceCable ? splice.sourceEndFiber : splice.destinationEndFiber;
+
+      const hasOverlap = !(endFiber < spliceStart || startFiber > spliceEnd);
+      if (hasOverlap) {
+        return splice;
+      }
+    }
+
+    return null;
   }
 }
 

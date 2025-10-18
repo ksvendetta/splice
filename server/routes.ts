@@ -105,6 +105,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: `Destination fiber range must be between 1 and ${destCable.fiberCount}` });
       }
       
+      const sourceConflict = await storage.checkSpliceConflict(
+        req.body.sourceCableId,
+        req.body.sourceStartFiber,
+        req.body.sourceEndFiber
+      );
+      
+      if (sourceConflict) {
+        return res.status(400).json({ 
+          error: `Fiber conflict on source cable ${sourceCable.name}: fibers ${req.body.sourceStartFiber}-${req.body.sourceEndFiber} overlap with existing splice` 
+        });
+      }
+      
+      const destConflict = await storage.checkSpliceConflict(
+        req.body.destinationCableId,
+        req.body.destinationStartFiber,
+        req.body.destinationEndFiber
+      );
+      
+      if (destConflict) {
+        return res.status(400).json({ 
+          error: `Fiber conflict on destination cable ${destCable.name}: fibers ${req.body.destinationStartFiber}-${req.body.destinationEndFiber} overlap with existing splice` 
+        });
+      }
+      
       const validatedData = insertSpliceSchema.parse(req.body);
       const splice = await storage.createSplice(validatedData);
       res.status(201).json(splice);
@@ -138,6 +162,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (mergedData.destinationStartFiber < 1 || mergedData.destinationEndFiber > destCable.fiberCount) {
         return res.status(400).json({ error: `Destination fiber range must be between 1 and ${destCable.fiberCount}` });
+      }
+      
+      const sourceConflict = await storage.checkSpliceConflict(
+        mergedData.sourceCableId,
+        mergedData.sourceStartFiber,
+        mergedData.sourceEndFiber,
+        req.params.id
+      );
+      
+      if (sourceConflict) {
+        return res.status(400).json({ 
+          error: `Fiber conflict on source cable ${sourceCable.name}: fibers ${mergedData.sourceStartFiber}-${mergedData.sourceEndFiber} overlap with existing splice` 
+        });
+      }
+      
+      const destConflict = await storage.checkSpliceConflict(
+        mergedData.destinationCableId,
+        mergedData.destinationStartFiber,
+        mergedData.destinationEndFiber,
+        req.params.id
+      );
+      
+      if (destConflict) {
+        return res.status(400).json({ 
+          error: `Fiber conflict on destination cable ${destCable.name}: fibers ${mergedData.destinationStartFiber}-${mergedData.destinationEndFiber} overlap with existing splice` 
+        });
       }
       
       insertSpliceSchema.parse(mergedData);
