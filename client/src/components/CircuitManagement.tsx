@@ -342,11 +342,6 @@ export function CircuitManagement({ cable }: CircuitManagementProps) {
     const startStrand = ((fiberStart - 1) % ribbonSize) + 1;
     const endStrand = ((fiberEnd - 1) % ribbonSize) + 1;
     
-    // Check if this is a complete ribbon usage (no splits)
-    const isStartRibbonFull = startStrand === 1;
-    const isEndRibbonFull = endStrand === ribbonSize;
-    const hasNoSplitRibbons = isStartRibbonFull && isEndRibbonFull;
-    
     if (startRibbon === endRibbon) {
       // Single ribbon
       if (startStrand === 1 && endStrand === ribbonSize) {
@@ -356,34 +351,34 @@ export function CircuitManagement({ cable }: CircuitManagementProps) {
       return `R${startRibbon}:${startStrand}-${endStrand}`;
     } else {
       // Multiple ribbons
-      if (hasNoSplitRibbons) {
-        // All ribbons are complete, show Rx-Ry
-        return `R${startRibbon}-R${endRibbon}`;
+      const parts = [];
+      
+      // Check if we start with a partial ribbon
+      const startsWithPartialRibbon = startStrand !== 1;
+      // Check if we end with a partial ribbon
+      const endsWithPartialRibbon = endStrand !== ribbonSize;
+      
+      if (startsWithPartialRibbon) {
+        // First ribbon is partial
+        parts.push(`R${startRibbon}:${startStrand}-${ribbonSize}`);
       }
       
-      // Has split ribbons, show detailed breakdown
-      const firstRibbonEnd = ribbonSize;
-      const lastRibbonStart = 1;
+      // Determine the range of full ribbons
+      const firstFullRibbon = startsWithPartialRibbon ? startRibbon + 1 : startRibbon;
+      const lastFullRibbon = endsWithPartialRibbon ? endRibbon - 1 : endRibbon;
       
-      let parts = [];
-      
-      // First ribbon
-      if (startStrand === 1 && startRibbon < endRibbon) {
-        parts.push(`R${startRibbon}`);
-      } else {
-        parts.push(`R${startRibbon}:${startStrand}-${firstRibbonEnd}`);
+      // Add full ribbons as a range
+      if (firstFullRibbon <= lastFullRibbon) {
+        if (firstFullRibbon === lastFullRibbon) {
+          parts.push(`R${firstFullRibbon}`);
+        } else {
+          parts.push(`R${firstFullRibbon}-${lastFullRibbon}`);
+        }
       }
       
-      // Middle ribbons (all complete)
-      for (let ribbon = startRibbon + 1; ribbon < endRibbon; ribbon++) {
-        parts.push(`R${ribbon}`);
-      }
-      
-      // Last ribbon
-      if (endStrand === ribbonSize) {
-        parts.push(`R${endRibbon}`);
-      } else {
-        parts.push(`R${endRibbon}:${lastRibbonStart}-${endStrand}`);
+      if (endsWithPartialRibbon) {
+        // Last ribbon is partial
+        parts.push(`R${endRibbon}:1-${endStrand}`);
       }
       
       return parts.join(' / ');
