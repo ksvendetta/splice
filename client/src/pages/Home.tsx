@@ -265,7 +265,7 @@ export default function Home() {
                           // Alternate background color based on circuit index
                           const rowBgColor = circuitIndex % 2 === 0 
                             ? "bg-white dark:bg-background" 
-                            : "bg-gray-50 dark:bg-muted/30";
+                            : "bg-gray-200 dark:bg-muted/50";
                           
                           if (!feedCable) {
                             return [(
