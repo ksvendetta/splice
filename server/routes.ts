@@ -37,6 +37,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: `Cable name "${validatedData.name}" already exists. Please choose a different name.` });
       }
       
+      // Validate circuits BEFORE creating cable
+      if (validatedData.circuitIds && validatedData.circuitIds.length > 0) {
+        // Filter out empty lines
+        const filteredCircuitIds = validatedData.circuitIds
+          .map(id => id.trim())
+          .filter(id => id.length > 0);
+        
+        let currentFiberStart = 1;
+        
+        for (let i = 0; i < filteredCircuitIds.length; i++) {
+          const circuitId = filteredCircuitIds[i];
+          
+          // Parse circuit ID to get fiber count
+          let fiberCount: number;
+          try {
+            fiberCount = parseCircuitId(circuitId);
+          } catch (error) {
+            // Skip invalid circuit IDs
+            continue;
+          }
+          
+          const fiberEnd = currentFiberStart + fiberCount - 1;
+          
+          // Validate fiber range doesn't exceed cable capacity
+          if (fiberEnd > validatedData.fiberCount) {
+            return res.status(400).json({ 
+              error: `Circuit "${circuitId}" requires ${fiberCount} fibers but only ${validatedData.fiberCount - currentFiberStart + 1} fibers remaining in cable` 
+            });
+          }
+          
+          currentFiberStart = fiberEnd + 1;
+        }
+      }
+      
+      // All validations passed, now create the cable
       const cable = await storage.createCable(validatedData);
       
       // Create circuits if provided
@@ -61,13 +96,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           const fiberEnd = currentFiberStart + fiberCount - 1;
-          
-          // Validate fiber range doesn't exceed cable capacity
-          if (fiberEnd > cable.fiberCount) {
-            return res.status(400).json({ 
-              error: `Circuit "${circuitId}" requires ${fiberCount} fibers but only ${cable.fiberCount - currentFiberStart + 1} fibers remaining in cable` 
-            });
-          }
           
           // Create circuit
           await storage.createCircuit({
