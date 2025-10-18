@@ -65,6 +65,14 @@ export const splices = pgTable("splices", {
   isCompleted: integer("is_completed").notNull().default(0),
 });
 
+// Saves table - stores project snapshots with date/time stamped names
+export const saves = pgTable("saves", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(), // Date/time stamp (e.g., "2025-10-18 20:15:30")
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  data: text("data").notNull(), // JSON string containing cables and circuits
+});
+
 // Insert schemas
 export const insertCableSchema = createInsertSchema(cables).omit({ 
   id: true,
@@ -104,6 +112,10 @@ export const insertSpliceSchema = createInsertSchema(splices).omit({ id: true })
     path: ["destinationEndFiber"],
   }
 );
+export const insertSaveSchema = createInsertSchema(saves).omit({ 
+  id: true, 
+  createdAt: true 
+});
 
 // Types
 export type InsertCable = z.infer<typeof insertCableSchema>;
@@ -112,6 +124,8 @@ export type InsertCircuit = z.infer<typeof insertCircuitSchema>;
 export type Circuit = typeof circuits.$inferSelect;
 export type InsertSplice = z.infer<typeof insertSpliceSchema>;
 export type Splice = typeof splices.$inferSelect;
+export type InsertSave = z.infer<typeof insertSaveSchema>;
+export type Save = typeof saves.$inferSelect;
 
 // Helper function to get fiber color by index (0-11 for standard 12-fiber ribbon)
 export function getFiberColor(fiberIndex: number): FiberColor {
