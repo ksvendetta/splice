@@ -29,6 +29,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/cables", async (req, res) => {
     try {
       const validatedData = insertCableSchema.parse(req.body);
+      
+      // Check for duplicate cable name
+      const existingCables = await storage.getAllCables();
+      const duplicateName = existingCables.find(c => c.name.toLowerCase() === validatedData.name.toLowerCase());
+      if (duplicateName) {
+        return res.status(400).json({ error: `Cable name "${validatedData.name}" already exists. Please choose a different name.` });
+      }
+      
       const cable = await storage.createCable(validatedData);
       
       // Create circuits if provided
@@ -86,6 +94,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/cables/:id", async (req, res) => {
     try {
       const validatedData = insertCableSchema.parse(req.body);
+      
+      // Check for duplicate cable name (excluding current cable)
+      const existingCables = await storage.getAllCables();
+      const duplicateName = existingCables.find(c => 
+        c.id !== req.params.id && c.name.toLowerCase() === validatedData.name.toLowerCase()
+      );
+      if (duplicateName) {
+        return res.status(400).json({ error: `Cable name "${validatedData.name}" already exists. Please choose a different name.` });
+      }
+      
       const cable = await storage.updateCable(req.params.id, validatedData);
       if (!cable) {
         return res.status(404).json({ error: "Cable not found" });
