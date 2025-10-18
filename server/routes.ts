@@ -33,10 +33,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Create circuits if provided
       if (validatedData.circuitIds && validatedData.circuitIds.length > 0) {
+        // Filter out empty lines
+        const filteredCircuitIds = validatedData.circuitIds
+          .map(id => id.trim())
+          .filter(id => id.length > 0);
+        
         let currentFiberStart = 1;
         
-        for (let i = 0; i < validatedData.circuitIds.length; i++) {
-          const circuitId = validatedData.circuitIds[i];
+        for (let i = 0; i < filteredCircuitIds.length; i++) {
+          const circuitId = filteredCircuitIds[i];
           
           // Parse circuit ID to get fiber count
           let fiberCount: number;

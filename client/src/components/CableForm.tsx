@@ -131,12 +131,12 @@ export function CableForm({ cable, onSubmit, onCancel, isLoading }: CableFormPro
                     placeholder="Enter circuit IDs, one per line&#10;e.g.,&#10;b,1-2&#10;n,15-16&#10;lg,33-36"
                     value={field.value?.join('\n') || ''}
                     onChange={(e) => {
-                      const lines = e.target.value.split('\n').map(line => line.trim()).filter(Boolean);
+                      const lines = e.target.value.split('\n');
                       field.onChange(lines);
                     }}
                     data-testid="textarea-circuit-ids"
                     rows={6}
-                    className="font-mono text-sm"
+                    className="font-mono text-sm resize-none"
                   />
                 </FormControl>
                 <FormDescription className="text-xs">
