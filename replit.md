@@ -70,9 +70,9 @@ Preferred communication style: Simple, everyday language.
 
 **Storage Abstraction**
 - IStorage interface defining all data operations for cables and splices
-- MemStorage class implementing in-memory storage for development/testing
-- Design allows easy swap to PostgreSQL implementation via Drizzle ORM
+- DatabaseStorage class implementing PostgreSQL-backed persistent storage via Drizzle ORM
 - Cascade deletion support (deleting a cable removes associated splices)
+- Splice conflict validation to prevent overlapping fiber assignments on the same cable
 
 ### External Dependencies
 
@@ -97,7 +97,50 @@ Preferred communication style: Simple, everyday language.
 - PostCSS with Tailwind and Autoprefixer
 
 **Build & Deployment**
-- npm scripts: dev (tsx with NODE_ENV=development), build (Vite + ESBuild bundling), start (production node server)
+- npm scripts: dev (tsx with NODE_ENV=development), build (Vite + ESBuild bundling), start (production node server), db:push (sync schema to database)
 - Client built to dist/public, server bundled to dist/index.js
 - Path aliases: @/ for client/src, @shared/ for shared, @assets/ for attached_assets
 - Module resolution: ESNext with bundler mode for modern import syntax
+
+## Key Features (Updated October 2025)
+
+### Database Persistence
+- Full PostgreSQL database integration via Neon serverless driver
+- All cables and splices persist across sessions
+- Automatic schema migrations with Drizzle Kit
+- UUID-based primary keys for all records
+
+### Splice Conflict Validation
+- Backend validation prevents overlapping fiber assignments
+- Checks both source and destination cables for conflicts
+- Returns clear error messages identifying conflicting fiber ranges
+- Prevents data integrity issues in splice planning
+
+### Search and Filter
+- **Cable Search**: Real-time search by cable name or type
+- **Splice Filters**: Toggle between All, Completed, and Pending splices
+- Instant UI updates using React useMemo for performance
+- No-results states for better user experience
+
+### CSV Export
+- Export filtered splice data to CSV format
+- Includes all splice details: source/destination cables, fiber ranges, PON ranges, completion status
+- Automatic filename with current date
+- Respects current filter selection (exports only visible splices)
+
+### Print-Optimized Layout
+- Professional print styles for field technician reference
+- A4 landscape page layout with optimized margins
+- Hides interactive elements (buttons, inputs) when printing
+- Forces light theme for better ink efficiency and clarity
+- Ensures fiber colors print correctly with exact color adjustment
+- SVG visualizations optimized for paper output
+- Table formatting with clear borders for readability
+
+## Recent Changes (October 18, 2025)
+- Migrated from in-memory storage to PostgreSQL database
+- Added splice conflict validation at API level
+- Implemented search functionality for cables
+- Added filter controls for splice completion status
+- Created CSV export feature for splice documentation
+- Added print-friendly CSS with @media print rules
