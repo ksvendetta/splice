@@ -438,42 +438,80 @@ export default function Home() {
                               const [rangeStart, rangeEnd] = circuitRange.split('-').map(n => parseInt(n.trim()));
                               
                               if (allFullRibbons) {
-                                // Full ribbon view: show one row per ribbon
-                                const fiberCount = circuit.fiberEnd - circuit.fiberStart + 1;
-                                const ribbonCount = fiberCount / 12;
+                                // Full ribbon view: show based on actual fiber positions
+                                // Need to handle circuits that may span multiple ribbons
                                 const ribbonRows = [];
                                 
-                                for (let ribbonIndex = 0; ribbonIndex < ribbonCount; ribbonIndex++) {
-                                  const feedFiberStart = (circuit.feedFiberStart || circuit.fiberStart) + (ribbonIndex * 12);
-                                  const feedRibbon = getRibbonNumber(feedFiberStart);
+                                // Group fibers by ribbon for both feed and distribution
+                                const distFiberStart = circuit.fiberStart;
+                                const distFiberEnd = circuit.fiberEnd;
+                                const feedFiberStart = circuit.feedFiberStart || circuit.fiberStart;
+                                const feedFiberEnd = circuit.feedFiberEnd || circuit.fiberEnd;
+                                
+                                // Find which ribbons this circuit spans on distribution side
+                                const distStartRibbon = getRibbonNumber(distFiberStart);
+                                const distEndRibbon = getRibbonNumber(distFiberEnd);
+                                
+                                // Find which ribbons this circuit spans on feed side
+                                const feedStartRibbon = getRibbonNumber(feedFiberStart);
+                                const feedEndRibbon = getRibbonNumber(feedFiberEnd);
+                                
+                                // Process each group of fibers that share the same ribbon pair
+                                let currentDistFiber = distFiberStart;
+                                let currentFeedFiber = feedFiberStart;
+                                
+                                while (currentDistFiber <= distFiberEnd) {
+                                  const currentDistRibbon = getRibbonNumber(currentDistFiber);
+                                  const currentFeedRibbon = getRibbonNumber(currentFeedFiber);
                                   
-                                  // Calculate circuit range for this ribbon (12 circuits)
-                                  const circuitStart = rangeStart + (ribbonIndex * 12);
-                                  const circuitEnd = circuitStart + 11;
+                                  // Find end of current ribbon segment for distribution
+                                  const distRibbonEnd = currentDistRibbon * ribbonSize;
+                                  const distSegmentEnd = Math.min(distRibbonEnd, distFiberEnd);
                                   
-                                  // Distribution ribbon is based on circuit numbering, not physical position
-                                  const distRibbon = getRibbonNumber(circuitStart);
+                                  // Find end of current ribbon segment for feed
+                                  const feedRibbonEnd = currentFeedRibbon * ribbonSize;
+                                  const feedSegmentEnd = Math.min(feedRibbonEnd, feedFiberEnd);
                                   
-                                  const feedRibbonColor = getColorForRibbon(feedRibbon);
-                                  const distRibbonColor = getColorForRibbon(distRibbon);
+                                  // Calculate how many fibers in this segment
+                                  const distFiberCount = distSegmentEnd - currentDistFiber + 1;
+                                  const feedFiberCount = feedSegmentEnd - currentFeedFiber + 1;
+                                  const segmentFiberCount = Math.min(distFiberCount, feedFiberCount);
+                                  
+                                  // Calculate circuit IDs for this segment
+                                  const fiberOffset = currentDistFiber - distFiberStart;
+                                  const circuitStart = rangeStart + fiberOffset;
+                                  const circuitEnd = circuitStart + segmentFiberCount - 1;
+                                  
+                                  // Get strand positions
+                                  const distStrandStart = getFiberPositionInRibbon(currentDistFiber);
+                                  const distStrandEnd = getFiberPositionInRibbon(currentDistFiber + segmentFiberCount - 1);
+                                  const feedStrandStart = getFiberPositionInRibbon(currentFeedFiber);
+                                  const feedStrandEnd = getFiberPositionInRibbon(currentFeedFiber + segmentFiberCount - 1);
+                                  
+                                  const feedRibbonColor = getColorForRibbon(currentFeedRibbon);
+                                  const distRibbonColor = getColorForRibbon(currentDistRibbon);
                                   
                                   ribbonRows.push(
-                                    <TableRow key={`${circuit.id}-ribbon-${ribbonIndex}`} className={rowBgColor} data-testid={`row-ribbon-${circuit.id}-${ribbonIndex}`}>
+                                    <TableRow key={`${circuit.id}-segment-${currentDistFiber}`} className={rowBgColor} data-testid={`row-ribbon-${circuit.id}-${currentDistFiber}`}>
                                       <TableCell className="text-center font-mono text-sm">{feedCable.name} - {feedCable.fiberCount}</TableCell>
                                       <TableCell className="text-center">
                                         <div className={`inline-block px-3 py-1 rounded border-2 border-black ${feedRibbonColor.bg} ${feedRibbonColor.text} font-mono font-semibold`}>
-                                          R{feedRibbon}
+                                          R{currentFeedRibbon}:{feedStrandStart}-{feedStrandEnd}
                                         </div>
                                       </TableCell>
                                       <TableCell className="text-center font-mono font-semibold">{circuitPrefix},{circuitStart}-{circuitEnd}</TableCell>
                                       <TableCell className="text-center">
                                         <div className={`inline-block px-3 py-1 rounded border-2 border-black ${distRibbonColor.bg} ${distRibbonColor.text} font-mono font-semibold`}>
-                                          R{distRibbon}
+                                          R{currentDistRibbon}:{distStrandStart}-{distStrandEnd}
                                         </div>
                                       </TableCell>
                                       <TableCell className="text-center font-mono text-sm">{distributionCable?.name} - {distributionCable?.fiberCount}</TableCell>
                                     </TableRow>
                                   );
+                                  
+                                  // Move to next segment
+                                  currentDistFiber += segmentFiberCount;
+                                  currentFeedFiber += segmentFiberCount;
                                 }
                                 
                                 return ribbonRows;
