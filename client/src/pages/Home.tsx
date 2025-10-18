@@ -322,7 +322,7 @@ export default function Home() {
                             
                             fiberRows.push(
                               <TableRow key={`${circuit.id}-fiber-${i}`} className={rowBgColor} data-testid={`row-fiber-${circuit.id}-${i}`}>
-                                <TableCell className="text-center font-mono text-sm">{feedCable.fiberCount}</TableCell>
+                                <TableCell className="text-center font-mono text-sm">{feedCable.name} - {feedCable.fiberCount}</TableCell>
                                 <TableCell className="text-center font-mono font-semibold">{feedRibbon}</TableCell>
                                 <TableCell className="text-center">
                                   <div className={`inline-block px-3 py-1 rounded border-2 border-black ${feedColor.bg} ${feedColor.text} font-mono font-semibold`}>
@@ -336,7 +336,7 @@ export default function Home() {
                                   </div>
                                 </TableCell>
                                 <TableCell className="text-center font-mono font-semibold">{distRibbon}</TableCell>
-                                <TableCell className="text-center font-mono text-sm">{distributionCable?.fiberCount}</TableCell>
+                                <TableCell className="text-center font-mono text-sm">{distributionCable?.name} - {distributionCable?.fiberCount}</TableCell>
                               </TableRow>
                             );
                           }
