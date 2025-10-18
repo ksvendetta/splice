@@ -35,7 +35,13 @@ export class MemStorage implements IStorage {
 
   async createCable(insertCable: InsertCable): Promise<Cable> {
     const id = randomUUID();
-    const cable: Cable = { ...insertCable, id };
+    const cable: Cable = {
+      id,
+      name: insertCable.name,
+      fiberCount: insertCable.fiberCount,
+      ribbonSize: insertCable.ribbonSize ?? 12,
+      type: insertCable.type,
+    };
     this.cables.set(id, cable);
     return cable;
   }
@@ -45,7 +51,13 @@ export class MemStorage implements IStorage {
     if (!existingCable) {
       return undefined;
     }
-    const updatedCable: Cable = { ...insertCable, id };
+    const updatedCable: Cable = {
+      id,
+      name: insertCable.name,
+      fiberCount: insertCable.fiberCount,
+      ribbonSize: insertCable.ribbonSize ?? 12,
+      type: insertCable.type,
+    };
     this.cables.set(id, updatedCable);
     return updatedCable;
   }
@@ -68,7 +80,20 @@ export class MemStorage implements IStorage {
 
   async createSplice(insertSplice: InsertSplice): Promise<Splice> {
     const id = randomUUID();
-    const splice: Splice = { ...insertSplice, id };
+    const splice: Splice = {
+      id,
+      sourceCableId: insertSplice.sourceCableId,
+      destinationCableId: insertSplice.destinationCableId,
+      sourceRibbon: insertSplice.sourceRibbon,
+      sourceStartFiber: insertSplice.sourceStartFiber,
+      sourceEndFiber: insertSplice.sourceEndFiber,
+      destinationRibbon: insertSplice.destinationRibbon,
+      destinationStartFiber: insertSplice.destinationStartFiber,
+      destinationEndFiber: insertSplice.destinationEndFiber,
+      ponStart: insertSplice.ponStart ?? null,
+      ponEnd: insertSplice.ponEnd ?? null,
+      isCompleted: insertSplice.isCompleted ?? 0,
+    };
     this.splices.set(id, splice);
     return splice;
   }

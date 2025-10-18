@@ -123,7 +123,7 @@ export function CableForm({ cable, onSubmit, onCancel, isLoading }: CableFormPro
               <FormLabel>Ribbon Size</FormLabel>
               <Select
                 onValueChange={(value) => field.onChange(parseInt(value))}
-                defaultValue={field.value.toString()}
+                defaultValue={field.value?.toString() || "12"}
               >
                 <FormControl>
                   <SelectTrigger data-testid="select-ribbon-size">
