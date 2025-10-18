@@ -106,6 +106,31 @@ export function CircuitManagement({ cable }: CircuitManagementProps) {
     return totalAssignedFibers === cable.fiberCount;
   }, [totalAssignedFibers, cable.fiberCount]);
 
+  const getRibbonAndStrandDisplay = (fiberStart: number, fiberEnd: number, ribbonSize: number) => {
+    const startRibbon = Math.ceil(fiberStart / ribbonSize);
+    const endRibbon = Math.ceil(fiberEnd / ribbonSize);
+    
+    const startStrand = ((fiberStart - 1) % ribbonSize) + 1;
+    const endStrand = ((fiberEnd - 1) % ribbonSize) + 1;
+    
+    if (startRibbon === endRibbon) {
+      return `R${startRibbon}: ${startStrand}-${endStrand}`;
+    } else {
+      const firstRibbonEnd = ribbonSize;
+      const lastRibbonStart = 1;
+      
+      let result = `R${startRibbon}: ${startStrand}-${firstRibbonEnd}`;
+      
+      for (let ribbon = startRibbon + 1; ribbon < endRibbon; ribbon++) {
+        result += ` / R${ribbon}: 1-${ribbonSize}`;
+      }
+      
+      result += ` / R${endRibbon}: ${lastRibbonStart}-${endStrand}`;
+      
+      return result;
+    }
+  };
+
   if (isLoading) {
     return <div className="text-sm text-muted-foreground">Loading circuits...</div>;
   }
@@ -167,28 +192,38 @@ export function CircuitManagement({ cable }: CircuitManagementProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[10%]">Spliced</TableHead>
-                  <TableHead className="w-[30%]">Circuit ID</TableHead>
-                  <TableHead className="w-[45%]">Fiber Strands</TableHead>
+                  {cable.type === "Distribution" && (
+                    <TableHead className="w-[10%]">Splice</TableHead>
+                  )}
+                  <TableHead className={cable.type === "Distribution" ? "w-[30%]" : "w-[40%]"}>Circuit ID</TableHead>
+                  <TableHead className={cable.type === "Distribution" ? "w-[45%]" : "w-[45%]"}>Fiber Strands</TableHead>
                   <TableHead className="w-[15%] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {circuits.map((circuit) => {
+                  const ribbonDisplay = getRibbonAndStrandDisplay(
+                    circuit.fiberStart,
+                    circuit.fiberEnd,
+                    cable.ribbonSize
+                  );
+                  
                   return (
                     <TableRow key={circuit.id} data-testid={`row-circuit-${circuit.id}`}>
-                      <TableCell>
-                        <Checkbox
-                          checked={circuit.isSpliced === 1}
-                          onCheckedChange={() => toggleSplicedMutation.mutate(circuit.id)}
-                          data-testid={`checkbox-spliced-${circuit.id}`}
-                        />
-                      </TableCell>
+                      {cable.type === "Distribution" && (
+                        <TableCell>
+                          <Checkbox
+                            checked={circuit.isSpliced === 1}
+                            onCheckedChange={() => toggleSplicedMutation.mutate(circuit.id)}
+                            data-testid={`checkbox-spliced-${circuit.id}`}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell className="font-mono text-sm" data-testid={`text-circuit-id-${circuit.id}`}>
                         {circuit.circuitId}
                       </TableCell>
                       <TableCell className="font-mono text-sm" data-testid={`text-fiber-range-${circuit.id}`}>
-                        Fibers {circuit.fiberStart}-{circuit.fiberEnd}
+                        {ribbonDisplay}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
