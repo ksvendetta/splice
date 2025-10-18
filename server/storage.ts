@@ -91,7 +91,7 @@ export class DatabaseStorage implements IStorage {
     return circuit || undefined;
   }
 
-  async createCircuit(insertCircuit: InsertCircuit & { position: number; fiberStart: number; fiberEnd: number }): Promise<Circuit> {
+  async createCircuit(insertCircuit: InsertCircuit & { position: number; fiberStart: number; fiberEnd: number; isSpliced?: number; feedCableId?: string; feedFiberStart?: number; feedFiberEnd?: number }): Promise<Circuit> {
     const [circuit] = await db
       .insert(circuits)
       .values({
@@ -100,6 +100,10 @@ export class DatabaseStorage implements IStorage {
         position: insertCircuit.position,
         fiberStart: insertCircuit.fiberStart,
         fiberEnd: insertCircuit.fiberEnd,
+        isSpliced: insertCircuit.isSpliced ?? 0,
+        feedCableId: insertCircuit.feedCableId,
+        feedFiberStart: insertCircuit.feedFiberStart,
+        feedFiberEnd: insertCircuit.feedFiberEnd,
       })
       .returning();
     return circuit;
