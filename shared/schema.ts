@@ -30,6 +30,15 @@ export const cables = pgTable("cables", {
   type: text("type").notNull(),
 });
 
+// Circuits table - represents circuit IDs and fiber assignments within a cable
+export const circuits = pgTable("circuits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  cableId: varchar("cable_id").notNull(),
+  circuitId: text("circuit_id").notNull(),
+  fiberStart: integer("fiber_start").notNull(),
+  fiberEnd: integer("fiber_end").notNull(),
+});
+
 // Splice table - represents a connection between fibers of two cables
 export const splices = pgTable("splices", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -48,6 +57,13 @@ export const splices = pgTable("splices", {
 
 // Insert schemas
 export const insertCableSchema = createInsertSchema(cables).omit({ id: true });
+export const insertCircuitSchema = createInsertSchema(circuits).omit({ id: true }).refine(
+  (data) => data.fiberStart <= data.fiberEnd,
+  {
+    message: "Start fiber must be less than or equal to end fiber",
+    path: ["fiberEnd"],
+  }
+);
 export const insertSpliceSchema = createInsertSchema(splices).omit({ id: true }).refine(
   (data) => data.sourceStartFiber <= data.sourceEndFiber,
   {
@@ -75,6 +91,8 @@ export const insertSpliceSchema = createInsertSchema(splices).omit({ id: true })
 // Types
 export type InsertCable = z.infer<typeof insertCableSchema>;
 export type Cable = typeof cables.$inferSelect;
+export type InsertCircuit = z.infer<typeof insertCircuitSchema>;
+export type Circuit = typeof circuits.$inferSelect;
 export type InsertSplice = z.infer<typeof insertSpliceSchema>;
 export type Splice = typeof splices.$inferSelect;
 

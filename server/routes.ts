@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCableSchema, insertSpliceSchema } from "@shared/schema";
+import { insertCableSchema, insertCircuitSchema, insertSpliceSchema } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -64,6 +64,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete cable" });
+    }
+  });
+
+  app.get("/api/circuits", async (_req, res) => {
+    try {
+      const circuits = await storage.getAllCircuits();
+      res.json(circuits);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch circuits" });
+    }
+  });
+
+  app.get("/api/circuits/cable/:cableId", async (req, res) => {
+    try {
+      const circuits = await storage.getCircuitsByCableId(req.params.cableId);
+      res.json(circuits);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch circuits" });
+    }
+  });
+
+  app.get("/api/circuits/:id", async (req, res) => {
+    try {
+      const circuit = await storage.getCircuit(req.params.id);
+      if (!circuit) {
+        return res.status(404).json({ error: "Circuit not found" });
+      }
+      res.json(circuit);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch circuit" });
+    }
+  });
+
+  app.post("/api/circuits", async (req, res) => {
+    try {
+      const validatedData = insertCircuitSchema.parse(req.body);
+      
+      const cable = await storage.getCable(validatedData.cableId);
+      if (!cable) {
+        return res.status(400).json({ error: "Cable not found" });
+      }
+      
+      if (validatedData.fiberStart < 1 || validatedData.fiberEnd > cable.fiberCount) {
+        return res.status(400).json({ 
+          error: `Fiber range must be between 1 and ${cable.fiberCount}` 
+        });
+      }
+      
+      const circuit = await storage.createCircuit(validatedData);
+      res.status(201).json(circuit);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid circuit data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create circuit" });
+    }
+  });
+
+  app.put("/api/circuits/:id", async (req, res) => {
+    try {
+      const partialData = insertCircuitSchema.partial().parse(req.body);
+      const circuit = await storage.updateCircuit(req.params.id, partialData);
+      if (!circuit) {
+        return res.status(404).json({ error: "Circuit not found" });
+      }
+      res.json(circuit);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid circuit data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update circuit" });
+    }
+  });
+
+  app.delete("/api/circuits/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteCircuit(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Circuit not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete circuit" });
     }
   });
 

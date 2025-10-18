@@ -1,4 +1,4 @@
-import { cables, splices, type Cable, type InsertCable, type Splice, type InsertSplice } from "@shared/schema";
+import { cables, circuits, splices, type Cable, type InsertCable, type Circuit, type InsertCircuit, type Splice, type InsertSplice } from "@shared/schema";
 import { db } from "./db";
 import { eq, or } from "drizzle-orm";
 
@@ -8,6 +8,14 @@ export interface IStorage {
   createCable(cable: InsertCable): Promise<Cable>;
   updateCable(id: string, cable: InsertCable): Promise<Cable | undefined>;
   deleteCable(id: string): Promise<boolean>;
+  
+  getAllCircuits(): Promise<Circuit[]>;
+  getCircuitsByCableId(cableId: string): Promise<Circuit[]>;
+  getCircuit(id: string): Promise<Circuit | undefined>;
+  createCircuit(circuit: InsertCircuit): Promise<Circuit>;
+  updateCircuit(id: string, circuit: Partial<InsertCircuit>): Promise<Circuit | undefined>;
+  deleteCircuit(id: string): Promise<boolean>;
+  deleteCircuitsByCableId(cableId: string): Promise<void>;
   
   getAllSplices(): Promise<Splice[]>;
   getSplice(id: string): Promise<Splice | undefined>;
@@ -57,8 +65,53 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCable(id: string): Promise<boolean> {
     await this.deleteSplicesByCableId(id);
+    await this.deleteCircuitsByCableId(id);
     const result = await db.delete(cables).where(eq(cables.id, id));
     return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  async getAllCircuits(): Promise<Circuit[]> {
+    return await db.select().from(circuits);
+  }
+
+  async getCircuitsByCableId(cableId: string): Promise<Circuit[]> {
+    return await db.select().from(circuits).where(eq(circuits.cableId, cableId));
+  }
+
+  async getCircuit(id: string): Promise<Circuit | undefined> {
+    const [circuit] = await db.select().from(circuits).where(eq(circuits.id, id));
+    return circuit || undefined;
+  }
+
+  async createCircuit(insertCircuit: InsertCircuit): Promise<Circuit> {
+    const [circuit] = await db
+      .insert(circuits)
+      .values({
+        cableId: insertCircuit.cableId,
+        circuitId: insertCircuit.circuitId,
+        fiberStart: insertCircuit.fiberStart,
+        fiberEnd: insertCircuit.fiberEnd,
+      })
+      .returning();
+    return circuit;
+  }
+
+  async updateCircuit(id: string, partialCircuit: Partial<InsertCircuit>): Promise<Circuit | undefined> {
+    const [circuit] = await db
+      .update(circuits)
+      .set(partialCircuit)
+      .where(eq(circuits.id, id))
+      .returning();
+    return circuit || undefined;
+  }
+
+  async deleteCircuit(id: string): Promise<boolean> {
+    const result = await db.delete(circuits).where(eq(circuits.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  async deleteCircuitsByCableId(cableId: string): Promise<void> {
+    await db.delete(circuits).where(eq(circuits.cableId, cableId));
   }
 
   async getAllSplices(): Promise<Splice[]> {
