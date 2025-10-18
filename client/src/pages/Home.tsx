@@ -381,59 +381,11 @@ export default function Home() {
                             </TableRow>
                             <TableRow>
                               <TableHead className="text-center">Cable</TableHead>
-                              <TableHead className="text-center">
-                                <div className="flex flex-col items-center gap-1">
-                                  <span>Ribbon</span>
-                                  <div className="flex flex-wrap gap-0.5 justify-center">
-                                    {[
-                                      { num: 1, bg: "bg-blue-500", text: "text-white" },
-                                      { num: 2, bg: "bg-orange-500", text: "text-white" },
-                                      { num: 3, bg: "bg-green-600", text: "text-white" },
-                                      { num: 4, bg: "bg-amber-700", text: "text-white" },
-                                      { num: 5, bg: "bg-slate-500", text: "text-white" },
-                                      { num: 6, bg: "bg-white", text: "text-black" },
-                                      { num: 7, bg: "bg-red-600", text: "text-white" },
-                                      { num: 8, bg: "bg-black", text: "text-white" },
-                                      { num: 9, bg: "bg-yellow-400", text: "text-black" },
-                                      { num: 10, bg: "bg-purple-600", text: "text-white" },
-                                      { num: 11, bg: "bg-pink-500", text: "text-white" },
-                                      { num: 12, bg: "bg-cyan-400", text: "text-black" },
-                                    ].map((color) => (
-                                      <span key={color.num} className={`inline-block px-1 py-0.5 rounded border border-black ${color.bg} ${color.text} font-mono text-[10px] font-semibold`}>
-                                        {color.num}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              </TableHead>
+                              <TableHead className="text-center">Ribbon</TableHead>
                               {!allFullRibbons && <TableHead className="text-center">Strand</TableHead>}
                               <TableHead className="text-center"></TableHead>
                               {!allFullRibbons && <TableHead className="text-center">Strand</TableHead>}
-                              <TableHead className="text-center">
-                                <div className="flex flex-col items-center gap-1">
-                                  <span>Ribbon</span>
-                                  <div className="flex flex-wrap gap-0.5 justify-center">
-                                    {[
-                                      { num: 1, bg: "bg-blue-500", text: "text-white" },
-                                      { num: 2, bg: "bg-orange-500", text: "text-white" },
-                                      { num: 3, bg: "bg-green-600", text: "text-white" },
-                                      { num: 4, bg: "bg-amber-700", text: "text-white" },
-                                      { num: 5, bg: "bg-slate-500", text: "text-white" },
-                                      { num: 6, bg: "bg-white", text: "text-black" },
-                                      { num: 7, bg: "bg-red-600", text: "text-white" },
-                                      { num: 8, bg: "bg-black", text: "text-white" },
-                                      { num: 9, bg: "bg-yellow-400", text: "text-black" },
-                                      { num: 10, bg: "bg-purple-600", text: "text-white" },
-                                      { num: 11, bg: "bg-pink-500", text: "text-white" },
-                                      { num: 12, bg: "bg-cyan-400", text: "text-black" },
-                                    ].map((color) => (
-                                      <span key={color.num} className={`inline-block px-1 py-0.5 rounded border border-black ${color.bg} ${color.text} font-mono text-[10px] font-semibold`}>
-                                        {color.num}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              </TableHead>
+                              <TableHead className="text-center">Ribbon</TableHead>
                               <TableHead className="text-center">Cable</TableHead>
                             </TableRow>
                           </TableHeader>
