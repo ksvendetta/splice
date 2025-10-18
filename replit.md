@@ -46,6 +46,7 @@ Preferred communication style: Simple, everyday language.
 **API Design**
 - RESTful endpoints under `/api` prefix
 - CRUD operations for cables: GET /api/cables, GET /api/cables/:id, POST /api/cables, PUT /api/cables/:id, DELETE /api/cables/:id
+- CRUD operations for circuits: GET /api/circuits, GET /api/circuits/cable/:cableId, POST /api/circuits, DELETE /api/circuits/:id
 - CRUD operations for splices: GET /api/splices, GET /api/splices/:id, POST /api/splices, PUT /api/splices/:id, DELETE /api/splices/:id
 - Request validation using Zod schemas derived from Drizzle ORM schema definitions
 - JSON request/response format with appropriate HTTP status codes
@@ -64,14 +65,15 @@ Preferred communication style: Simple, everyday language.
 
 **Database Schema**
 - **Cables Table**: Stores cable definitions with id (UUID), name, fiberCount, ribbonSize (default 12), and type fields
+- **Circuits Table**: Stores circuit ID assignments and fiber allocations within each cable (cableId, circuitId, fiberStart, fiberEnd)
 - **Splices Table**: Stores fiber connections between cables with source/destination cable references, ribbon numbers, fiber ranges (start/end), optional PON range, and completion status
 - UUID primary keys using PostgreSQL's gen_random_uuid()
 - Integer-based boolean for splice completion status (0/1) for database compatibility
 
 **Storage Abstraction**
-- IStorage interface defining all data operations for cables and splices
+- IStorage interface defining all data operations for cables, circuits, and splices
 - DatabaseStorage class implementing PostgreSQL-backed persistent storage via Drizzle ORM
-- Cascade deletion support (deleting a cable removes associated splices)
+- Cascade deletion support (deleting a cable removes associated circuits and splices)
 - Splice conflict validation to prevent overlapping fiber assignments on the same cable
 
 ### External Dependencies
@@ -128,6 +130,15 @@ Preferred communication style: Simple, everyday language.
 - Automatic filename with current date
 - Respects current filter selection (exports only visible splices)
 
+### Circuit ID Management
+- Track circuit IDs and their fiber allocations within each cable
+- Add multiple circuits per cable with custom circuit IDs (e.g., "b,1-2", "ks,219-228")
+- Fiber range validation ensures circuits stay within cable fiber count
+- Real-time validation with Pass/Fail indicator showing if circuits add up to total cable size
+- Visual feedback showing assigned/total fiber count (e.g., "24 / 24 fibers")
+- Automatic persistence of circuit data across sessions
+- Delete individual circuits to modify fiber allocations
+
 ### Print-Optimized Layout
 - Professional print styles for field technician reference
 - A4 landscape page layout with optimized margins
@@ -144,3 +155,6 @@ Preferred communication style: Simple, everyday language.
 - Added filter controls for splice completion status
 - Created CSV export feature for splice documentation
 - Added print-friendly CSS with @media print rules
+- Implemented circuit ID management with fiber allocation tracking
+- Added circuit validation showing pass/fail status when circuits sum to cable size
+- Created CircuitManagement component with CRUD operations for circuit IDs
