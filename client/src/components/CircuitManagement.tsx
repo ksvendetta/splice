@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Circuit, Cable, InsertCircuit } from "@shared/schema";
+import { Circuit, Cable, InsertCircuit, Settings } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,10 @@ export function CircuitManagement({ cable }: CircuitManagementProps) {
   const [editingCircuitId, setEditingCircuitId] = useState<string | null>(null);
   const [editingCircuitValue, setEditingCircuitValue] = useState("");
 
+  const { data: settings } = useQuery<Settings>({
+    queryKey: ["/api/settings"],
+  });
+
   const { data: circuits = [], isLoading } = useQuery<Circuit[]>({
     queryKey: ["/api/circuits/cable", cable.id],
     queryFn: async () => {
@@ -45,6 +49,13 @@ export function CircuitManagement({ cable }: CircuitManagementProps) {
   const { data: allCircuits = [] } = useQuery<Circuit[]>({
     queryKey: ["/api/circuits"],
   });
+
+  // Determine mode-specific terminology
+  const isCopperMode = settings?.spliceMode === "copper";
+  const unitName = isCopperMode ? "Pair" : "Strand";
+  const unitNamePlural = isCopperMode ? "Pairs" : "Strands";
+  const groupName = isCopperMode ? "Binder" : "Ribbon";
+  const countLabel = isCopperMode ? "Copper Count" : "Fiber Count";
 
   const createCircuitMutation = useMutation({
     mutationFn: async (data: InsertCircuit) => {
@@ -383,7 +394,27 @@ export function CircuitManagement({ cable }: CircuitManagementProps) {
     { name: "aqua", bg: "bg-cyan-400", text: "text-black" },
   ];
 
-  const getColorForNumber = (num: number) => fiberColors[(num - 1) % 12];
+  const getColorForNumber = (num: number) => {
+    if (isCopperMode) {
+      // For copper, use 25-pair Ring colors
+      const copperRingColors = [
+        { name: "blue", bg: "bg-blue-500", text: "text-white" },
+        { name: "orange", bg: "bg-orange-500", text: "text-white" },
+        { name: "green", bg: "bg-green-600", text: "text-white" },
+        { name: "brown", bg: "bg-amber-700", text: "text-white" },
+        { name: "slate", bg: "bg-slate-500", text: "text-white" },
+        { name: "white", bg: "bg-white", text: "text-black" },
+        { name: "red", bg: "bg-red-600", text: "text-white" },
+        { name: "black", bg: "bg-black", text: "text-white" },
+        { name: "yellow", bg: "bg-yellow-400", text: "text-black" },
+        { name: "violet", bg: "bg-purple-600", text: "text-white" },
+      ];
+      return copperRingColors[(num - 1) % 10];
+    } else {
+      // For fiber, use standard 12 fiber colors
+      return fiberColors[(num - 1) % 12];
+    }
+  };
 
   const getRibbonAndStrandDisplay = (fiberStart: number, fiberEnd: number, ribbonSize: number) => {
     const startRibbon = Math.ceil(fiberStart / ribbonSize);
@@ -394,9 +425,10 @@ export function CircuitManagement({ cable }: CircuitManagementProps) {
     
     const ColoredRibbon = ({ num }: { num: number }) => {
       const color = getColorForNumber(num);
+      const prefix = isCopperMode ? "B" : "R";
       return (
         <span className={`inline-block px-2 py-0.5 rounded border border-black ${color.bg} ${color.text} font-mono font-semibold text-xs`}>
-          R{num}
+          {prefix}{num}
         </span>
       );
     };
@@ -513,7 +545,7 @@ export function CircuitManagement({ cable }: CircuitManagementProps) {
             </Badge>
           )}
           <span className="text-sm text-muted-foreground" data-testid="text-cable-size">
-            Fiber Count: {totalAssignedFibers}/{cable.fiberCount}
+            {countLabel}: {totalAssignedFibers}/{cable.fiberCount}
           </span>
         </div>
       </CardHeader>
@@ -552,7 +584,7 @@ export function CircuitManagement({ cable }: CircuitManagementProps) {
                     <TableHead className="w-[10%]">Splice</TableHead>
                   )}
                   <TableHead className={cable.type === "Distribution" ? "w-[30%]" : "w-[40%]"}>Circuit ID</TableHead>
-                  <TableHead className={cable.type === "Distribution" ? "w-[45%]" : "w-[45%]"}>Fiber Strands</TableHead>
+                  <TableHead className={cable.type === "Distribution" ? "w-[45%]" : "w-[45%]"}>{isCopperMode ? "Copper Pairs" : "Fiber Strands"}</TableHead>
                   <TableHead className="w-[15%] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
