@@ -25,7 +25,6 @@ import { CableForm } from "@/components/CableForm";
 import { CableVisualization } from "@/components/CableVisualization";
 import { CircuitManagement } from "@/components/CircuitManagement";
 import { Plus, Cable as CableIcon, Workflow, FilePlus, History, RotateCcw, RefreshCw } from "lucide-react";
-import spliceLogo from "@assets/image_1760814059676.png";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -195,11 +194,6 @@ export default function Home() {
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img 
-                src={spliceLogo} 
-                alt="Splice Logo" 
-                className="h-8 w-8 object-contain" 
-              />
               <h1 className="text-xl font-semibold">Fiber Splice Manager</h1>
             </div>
             <div className="flex items-center gap-2">
