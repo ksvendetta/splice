@@ -3,6 +3,10 @@ import { pgTable, text, varchar, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Splice mode types
+export const spliceModes = ["fiber", "copper"] as const;
+export type SpliceMode = typeof spliceModes[number];
+
 // Fiber color type matching standard fiber optic color codes
 export const fiberColors = [
   "blue",
@@ -20,6 +24,37 @@ export const fiberColors = [
 ] as const;
 
 export type FiberColor = typeof fiberColors[number];
+
+// Copper pair Ring colors (25-pair standard)
+export const copperRingColors = [
+  "blue",    // Pair 1
+  "orange",  // Pair 2
+  "green",   // Pair 3
+  "brown",   // Pair 4
+  "slate",   // Pair 5
+  "white",   // Pair 6
+  "red",     // Pair 7
+  "black",   // Pair 8
+  "yellow",  // Pair 9
+  "violet",  // Pair 10
+  "blue",    // Pair 11
+  "orange",  // Pair 12
+  "green",   // Pair 13
+  "brown",   // Pair 14
+  "slate",   // Pair 15
+  "white",   // Pair 16
+  "red",     // Pair 17
+  "black",   // Pair 18
+  "yellow",  // Pair 19
+  "violet",  // Pair 20
+  "blue",    // Pair 21
+  "orange",  // Pair 22
+  "green",   // Pair 23
+  "brown",   // Pair 24
+  "slate",   // Pair 25
+] as const;
+
+export type CopperRingColor = typeof copperRingColors[number];
 
 // Cable types
 export const cableTypes = ["Feed", "Distribution"] as const;
@@ -73,6 +108,12 @@ export const saves = pgTable("saves", {
   data: text("data").notNull(), // JSON string containing cables and circuits
 });
 
+// Settings table - stores global application settings (single row)
+export const settings = pgTable("settings", {
+  id: integer("id").primaryKey().default(1),
+  spliceMode: text("splice_mode").notNull().default("fiber"), // "fiber" or "copper"
+});
+
 // Insert schemas
 export const insertCableSchema = createInsertSchema(cables).omit({ 
   id: true,
@@ -116,6 +157,11 @@ export const insertSaveSchema = createInsertSchema(saves).omit({
   id: true, 
   createdAt: true 
 });
+export const insertSettingsSchema = createInsertSchema(settings).omit({ 
+  id: true 
+}).extend({
+  spliceMode: z.enum(spliceModes),
+});
 
 // Types
 export type InsertCable = z.infer<typeof insertCableSchema>;
@@ -126,20 +172,42 @@ export type InsertSplice = z.infer<typeof insertSpliceSchema>;
 export type Splice = typeof splices.$inferSelect;
 export type InsertSave = z.infer<typeof insertSaveSchema>;
 export type Save = typeof saves.$inferSelect;
+export type InsertSettings = z.infer<typeof insertSettingsSchema>;
+export type Settings = typeof settings.$inferSelect;
 
 // Helper function to get fiber color by index (0-11 for standard 12-fiber ribbon)
 export function getFiberColor(fiberIndex: number): FiberColor {
   return fiberColors[fiberIndex % 12];
 }
 
-// Helper to get ribbon number for a given fiber (1-indexed)
+// Helper to get copper Ring color by pair number (1-25 for standard 25-pair binder)
+export function getCopperRingColor(pairNumber: number): CopperRingColor {
+  return copperRingColors[(pairNumber - 1) % 25];
+}
+
+// Helper to get copper Tip color (always white for standard 25-pair)
+export function getCopperTipColor(): "white" {
+  return "white";
+}
+
+// Helper to get ribbon/binder number for a given fiber/pair (1-indexed)
 export function getRibbonNumber(fiberNumber: number, ribbonSize: number = 12): number {
   return Math.ceil(fiberNumber / ribbonSize);
+}
+
+// Helper to get binder number for a given pair (1-indexed, 25-pair binders)
+export function getBinderNumber(pairNumber: number, binderSize: number = 25): number {
+  return Math.ceil(pairNumber / binderSize);
 }
 
 // Helper to get position within ribbon (0-11)
 export function getFiberPositionInRibbon(fiberNumber: number, ribbonSize: number = 12): number {
   return ((fiberNumber - 1) % ribbonSize);
+}
+
+// Helper to get position within binder (0-24)
+export function getPairPositionInBinder(pairNumber: number, binderSize: number = 25): number {
+  return ((pairNumber - 1) % binderSize);
 }
 
 // Helper to parse circuit ID and extract fiber count
