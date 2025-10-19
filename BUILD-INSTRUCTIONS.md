@@ -2,21 +2,28 @@
 
 ## Prerequisites
 - Windows computer
-- Node.js installed (v18 or higher)
-- Git installed
+- Node.js installed (v18 or higher recommended)
 
 ## Steps to Build
 
 ### 1. Download the Project
-Download all project files to your Windows computer.
+Download all project files to your Windows computer and extract to a folder (e.g., `C:\FiberMapConnect`).
 
 ### 2. Install Dependencies
 Open Command Prompt or PowerShell in the project folder and run:
-```bash
+```powershell
 npm install
 ```
 
-### 3. Modify package.json
+Wait for all packages to install (this may take several minutes).
+
+### 3. Rebuild Native Modules for Windows
+The SQLite database module needs to be rebuilt for your Windows system:
+```powershell
+npm rebuild better-sqlite3
+```
+
+### 4. Modify package.json
 You need to make these changes to `package.json`:
 
 **Add these fields after the "license" line:**
@@ -35,46 +42,91 @@ In package.json, move `"electron"` and `"electron-builder"` from `"dependencies"
 "electron:build": "npm run build && electron-builder --win --x64"
 ```
 
-### 4. Build the Application
-Run these commands:
-```bash
+### 5. Build the Frontend and Backend
+**IMPORTANT:** You MUST build the application before packaging with Electron:
+```powershell
 npm run build
+```
+
+This creates the `dist` folder with:
+- `dist/public/` - Built frontend (HTML, CSS, JS)
+- `dist/index.js` - Built backend server
+
+Verify the build succeeded by checking that both exist.
+
+### 6. Test Locally (Optional but Recommended)
+Before packaging, test the built app:
+```powershell
+node dist/index.js
+```
+
+Then open your browser to `http://localhost:5000`
+
+Press `Ctrl+C` to stop the server when done testing.
+
+### 7. Package as Windows Executable
+Now build the Electron app:
+```powershell
 npm run electron:build
 ```
 
-### 5. Find Your Executable
+This will:
+- Package the app with Electron
+- Include the built `dist` folder
+- Create a Windows installer in the `release` folder
+
+### 8. Find Your Executable
 The Windows executable will be created in the `release` folder:
-- **Installer**: `release/Fiber Splice Manager Setup x.x.x.exe`
-- **Portable**: `release/win-unpacked/Fiber Splice Manager.exe`
+- **Installer**: `release/Fiber Splice Manager Setup 1.0.0.exe`
+- **Unpacked**: `release/win-unpacked/Fiber Splice Manager.exe`
 
-## Alternative: Quick Portable Build
+You can run the unpacked version directly or install using the setup file.
 
-For a faster portable executable (no installer), update `electron-builder.yml`:
+## Running the Application
 
-Change the `win.target` section to:
-```yaml
-win:
-  target:
-    - target: portable
-      arch:
-        - x64
+### As Desktop App (.exe)
+Double-click the executable. The app will:
+1. Start the backend server automatically (in background)
+2. Open the application window
+3. All data saved to local SQLite database (`fiber-splice.db`)
+
+### As Web Server (Alternative)
+If you prefer to run it as a web server:
+```powershell
+node dist/index.js
 ```
-
-Then run:
-```bash
-npm run build
-npm run electron:build
-```
-
-The portable .exe will be in: `release/Fiber Splice Manager.exe`
+Then open browser to `http://localhost:5000`
 
 ## Troubleshooting
 
+### Error: "vite is not recognized"
+You forgot to run `npm install`. Go back to Step 2.
+
+### Error: "NODE_ENV is not recognized"
+Use this command instead:
+```powershell
+$env:NODE_ENV="production"; node dist/index.js
+```
+
+Or just run:
+```powershell
+node dist/index.js
+```
+
+### Error: "better-sqlite3 module version mismatch"
+Run:
+```powershell
+npm rebuild better-sqlite3
+```
+
 ### Error: "electron is only allowed in devDependencies"
-Make sure you moved electron and electron-builder to devDependencies as described in step 3.
+Make sure you moved electron and electron-builder to devDependencies as described in step 4.
+
+### Error: "Pre-transform error" or "Failed to load url"
+The `dist/public` folder is missing. Run `npm run build` again and verify it succeeds.
 
 ### Build takes a long time
-The first build downloads Electron (125 MB) and rebuilds native modules. Subsequent builds are faster.
+The first build downloads Electron (~125 MB) and rebuilds native modules. Subsequent builds are faster.
 
-### Missing icon error
-Make sure the icon file exists at `attached_assets/image_1760814059676.png`
+### App window opens but shows error
+Make sure you ran `npm run build` BEFORE `npm run electron:build`. The Electron package needs the built files in `dist/`.
