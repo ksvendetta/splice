@@ -121,12 +121,12 @@ export class SQLiteStorage implements IStorage {
     return stmt.get(id) as Cable | undefined;
   }
 
-  async createCable(insertCable: InsertCable): Promise<Cable> {
+  async createCable(insertCable: InsertCable, ribbonSize: number = 12): Promise<Cable> {
     const cable: Cable = {
       id: generateId(),
       name: insertCable.name,
       fiberCount: insertCable.fiberCount,
-      ribbonSize: 12,
+      ribbonSize: ribbonSize,
       type: insertCable.type,
     };
     

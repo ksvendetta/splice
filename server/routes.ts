@@ -30,6 +30,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const validatedData = insertCableSchema.parse(req.body);
       
+      // Get settings to determine ribbon/binder size
+      const settings = await storage.getSettings();
+      const ribbonSize = settings.spliceMode === "copper" ? 25 : 12;
+      
       // Check for duplicate cable name
       const existingCables = await storage.getAllCables();
       const duplicateName = existingCables.find(c => c.name.toLowerCase() === validatedData.name.toLowerCase());
@@ -72,7 +76,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // All validations passed, now create the cable
-      const cable = await storage.createCable(validatedData);
+      const cable = await storage.createCable(validatedData, ribbonSize);
       
       // Create circuits if provided
       if (validatedData.circuitIds && validatedData.circuitIds.length > 0) {

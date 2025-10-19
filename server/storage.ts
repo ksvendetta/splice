@@ -12,7 +12,7 @@ function generateId(): string {
 export interface IStorage {
   getAllCables(): Promise<Cable[]>;
   getCable(id: string): Promise<Cable | undefined>;
-  createCable(cable: InsertCable): Promise<Cable>;
+  createCable(cable: InsertCable, ribbonSize?: number): Promise<Cable>;
   updateCable(id: string, cable: InsertCable): Promise<Cable | undefined>;
   deleteCable(id: string): Promise<boolean>;
   
@@ -61,12 +61,12 @@ export class MemStorage implements IStorage {
     return this.cables.get(id);
   }
 
-  async createCable(insertCable: InsertCable): Promise<Cable> {
+  async createCable(insertCable: InsertCable, ribbonSize: number = 12): Promise<Cable> {
     const cable: Cable = {
       id: generateId(),
       name: insertCable.name,
       fiberCount: insertCable.fiberCount,
-      ribbonSize: 12,
+      ribbonSize: ribbonSize,
       type: insertCable.type,
     };
     this.cables.set(cable.id, cable);
