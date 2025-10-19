@@ -1,0 +1,46 @@
+{
+  "appId": "com.fibersplice.manager",
+  "productName": "Fiber Splice Manager",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "electron-main.cjs",
+    "dist/**/*",
+    "client/dist/**/*",
+    "server/**/*",
+    "shared/**/*",
+    "node_modules/**/*",
+    "!node_modules/electron",
+    "!node_modules/electron-builder",
+    "package.json"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "attached_assets/image_1760814059676.png"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true
+  },
+  "portable": {
+    "artifactName": "FiberSpliceManager-Portable.exe"
+  },
+  "extraResources": [
+    {
+      "from": "attached_assets",
+      "to": "attached_assets"
+    }
+  ]
+}
