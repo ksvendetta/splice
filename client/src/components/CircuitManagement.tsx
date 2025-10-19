@@ -74,8 +74,15 @@ export function CircuitManagement({ cable }: CircuitManagementProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/circuits"] });
       toast({ title: "Circuit deleted successfully" });
     },
-    onError: () => {
-      toast({ title: "Failed to delete circuit", variant: "destructive" });
+    onError: (error: any) => {
+      // If circuit doesn't exist (404), still remove from UI
+      if (error?.message?.includes("not found") || error?.message?.includes("404")) {
+        queryClient.invalidateQueries({ queryKey: ["/api/circuits/cable", cable.id] });
+        queryClient.invalidateQueries({ queryKey: ["/api/circuits"] });
+        toast({ title: "Circuit removed from display" });
+      } else {
+        toast({ title: "Failed to delete circuit", variant: "destructive" });
+      }
     },
   });
 
@@ -96,8 +103,15 @@ export function CircuitManagement({ cable }: CircuitManagementProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/circuits/cable", cable.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/circuits"] });
     },
-    onError: () => {
-      toast({ title: "Failed to toggle splice status", variant: "destructive" });
+    onError: (error: any) => {
+      // If circuit doesn't exist (404), refresh the UI
+      if (error?.message?.includes("not found") || error?.message?.includes("404")) {
+        queryClient.invalidateQueries({ queryKey: ["/api/circuits/cable", cable.id] });
+        queryClient.invalidateQueries({ queryKey: ["/api/circuits"] });
+        toast({ title: "Circuit not found - display refreshed", variant: "destructive" });
+      } else {
+        toast({ title: "Failed to toggle splice status", variant: "destructive" });
+      }
     },
   });
 

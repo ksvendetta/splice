@@ -106,8 +106,15 @@ export default function Home() {
       queryClient.invalidateQueries({ queryKey: ["/api/circuits"] });
       toast({ title: "Cable deleted successfully" });
     },
-    onError: () => {
-      toast({ title: "Failed to delete cable", variant: "destructive" });
+    onError: (error: any) => {
+      // If cable doesn't exist (404), still remove from UI
+      if (error?.message?.includes("not found") || error?.message?.includes("404")) {
+        queryClient.invalidateQueries({ queryKey: ["/api/cables"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/circuits"] });
+        toast({ title: "Cable removed from display" });
+      } else {
+        toast({ title: "Failed to delete cable", variant: "destructive" });
+      }
     },
   });
 
