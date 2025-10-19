@@ -644,18 +644,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         cableIdMap.set(cable.id, newCable.id);
       }
       
-      // Restore circuits with updated cable IDs
+      // Restore circuits with updated cable IDs and splice status
       for (const circuit of saveData.circuits) {
         const newCableId = cableIdMap.get(circuit.cableId);
         if (!newCableId) continue; // Skip if cable mapping not found
         
-        await storage.createCircuit({
+        // Remap feedCableId if it exists
+        const newFeedCableId = circuit.feedCableId ? cableIdMap.get(circuit.feedCableId) : undefined;
+        
+        const newCircuit = await storage.createCircuit({
           cableId: newCableId,
           circuitId: circuit.circuitId,
           position: circuit.position,
           fiberStart: circuit.fiberStart,
           fiberEnd: circuit.fiberEnd,
         });
+        
+        // Restore splice status and Feed cable mapping if circuit was spliced
+        if (circuit.isSpliced === 1 && newFeedCableId) {
+          await storage.updateCircuit(newCircuit.id, {
+            isSpliced: 1,
+            feedCableId: newFeedCableId,
+            feedFiberStart: circuit.feedFiberStart,
+            feedFiberEnd: circuit.feedFiberEnd,
+          });
+        }
       }
       
       res.json({ message: "Save loaded successfully" });
