@@ -4,6 +4,8 @@
 
 This application is a professional fiber optic cable splicing management tool for tracking circuits within fiber cables. It features a checkbox-based system for marking circuits as spliced, allowing users to create cables with specific fiber counts, define circuit IDs with auto-calculated fiber positions, and manage splice connections. The system aims to simplify the process of fiber optic cable management with a focus on automatic matching and industry-standard visualizations.
 
+**Progressive Web App (PWA):** The application is fully offline-capable with service worker caching, allowing installation on desktop and mobile devices and continued operation without internet connectivity.
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
@@ -77,9 +79,17 @@ Preferred communication style: Simple, everyday language.
 - **Pass/Fail Status:** Both cable cards and circuit details use consistent logic (Pass only when ALL fibers are assigned: assigned fibers === cable capacity).
 - Responsive design with a professional technical interface.
 
+## PWA Features
+
+**Offline Functionality:** Service worker caches all app assets for offline access. Data cached locally enables full app functionality without internet connection.
+**App Installation:** Users can install the app on desktop/mobile devices via browser's "Install App" option.
+**Update Notifications:** Visual notifications appear when new app versions are available, with one-click update functionality.
+**Manifest Configuration:** Web app manifest (`/manifest.json`) with app metadata, theme colors, and icon configurations.
+
 ## External Dependencies
 
 **Database:** PostgreSQL (via Neon serverless driver @neondatabase/serverless).
+**PWA:** Custom service worker implementation (`/sw.js`) with manual registration for offline support.
 **Core Libraries:**
 - React ecosystem: `react`, `react-dom`, `wouter`.
 - State management: `@tanstack/react-query`, `react-hook-form`.
