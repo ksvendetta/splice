@@ -281,5 +281,8 @@ export class MemStorage implements IStorage {
   }
 }
 
-// Use in-memory storage instead of Database
-export const storage = new MemStorage();
+// Import SQLite storage for persistent local storage
+import { SQLiteStorage } from './sqlite-storage';
+
+// Use SQLite storage for persistent data (survives server restarts)
+export const storage = new SQLiteStorage();
