@@ -136,10 +136,11 @@ export default function Home() {
       // Then reset all data
       return await apiRequest("DELETE", "/api/reset", undefined);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cables"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/circuits"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/saves"] });
+    onSuccess: async () => {
+      // Force refetch to clear the UI
+      await queryClient.refetchQueries({ queryKey: ["/api/cables"] });
+      await queryClient.refetchQueries({ queryKey: ["/api/circuits"] });
+      await queryClient.refetchQueries({ queryKey: ["/api/saves"] });
       setSelectedCableId(null);
       setStartNewDialogOpen(false);
       toast({ title: "Current project saved. Starting new project." });
@@ -153,9 +154,10 @@ export default function Home() {
     mutationFn: async () => {
       return await apiRequest("DELETE", "/api/reset", undefined);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cables"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/circuits"] });
+    onSuccess: async () => {
+      // Force refetch to clear the UI
+      await queryClient.refetchQueries({ queryKey: ["/api/cables"] });
+      await queryClient.refetchQueries({ queryKey: ["/api/circuits"] });
       setSelectedCableId(null);
       setResetDialogOpen(false);
       toast({ title: "All data has been reset" });
