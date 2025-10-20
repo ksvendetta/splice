@@ -10,21 +10,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { CableCard } from "@/components/CableCard";
 import { CableForm } from "@/components/CableForm";
 import { CableVisualization } from "@/components/CableVisualization";
 import { CircuitManagement } from "@/components/CircuitManagement";
-import { Plus, Cable as CableIcon, Workflow, FilePlus, History, RotateCcw, RefreshCw } from "lucide-react";
+import { Plus, Cable as CableIcon, Workflow, Save, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -37,16 +27,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { HistoryDialog } from "@/components/HistoryDialog";
 
 export default function Home() {
   const { toast } = useToast();
   const [selectedCableId, setSelectedCableId] = useState<string | null>(null);
   const [cableDialogOpen, setCableDialogOpen] = useState(false);
   const [editingCable, setEditingCable] = useState<Cable | null>(null);
-  const [startNewDialogOpen, setStartNewDialogOpen] = useState(false);
-  const [resetDialogOpen, setResetDialogOpen] = useState(false);
-  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
 
   const { data: cables = [], isLoading: cablesLoading } = useQuery<Cable[]>({
     queryKey: ["/api/cables"],
@@ -117,55 +103,101 @@ export default function Home() {
     },
   });
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest("POST", "/api/saves", {});
-    },
-    onSuccess: () => {
-      toast({ title: "Project saved successfully" });
-    },
-    onError: () => {
-      toast({ title: "Failed to save project", variant: "destructive" });
-    },
-  });
+  const handleSave = () => {
+    const projectData = {
+      cables,
+      circuits: allCircuits,
+    };
+    
+    const dataStr = JSON.stringify(projectData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `fiber-splice-project-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    toast({ title: "Project saved to file" });
+  };
 
-  const startNewMutation = useMutation({
-    mutationFn: async () => {
-      // First save the current state
-      await apiRequest("POST", "/api/saves", {});
-      // Then reset all data
-      return await apiRequest("DELETE", "/api/reset", undefined);
-    },
-    onSuccess: async () => {
-      // Force refetch to clear the UI
-      await queryClient.refetchQueries({ queryKey: ["/api/cables"] });
-      await queryClient.refetchQueries({ queryKey: ["/api/circuits"] });
-      await queryClient.refetchQueries({ queryKey: ["/api/saves"] });
-      setSelectedCableId(null);
-      setStartNewDialogOpen(false);
-      toast({ title: "Current project saved. Starting new project." });
-    },
-    onError: () => {
-      toast({ title: "Failed to start new project", variant: "destructive" });
-    },
-  });
-
-  const resetMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest("DELETE", "/api/reset", undefined);
-    },
-    onSuccess: async () => {
-      // Force refetch to clear the UI
-      await queryClient.refetchQueries({ queryKey: ["/api/cables"] });
-      await queryClient.refetchQueries({ queryKey: ["/api/circuits"] });
-      setSelectedCableId(null);
-      setResetDialogOpen(false);
-      toast({ title: "All data has been reset" });
-    },
-    onError: () => {
-      toast({ title: "Failed to reset data", variant: "destructive" });
-    },
-  });
+  const handleLoad = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json';
+    input.onchange = async (e: any) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      
+      try {
+        const text = await file.text();
+        const projectData = JSON.parse(text);
+        
+        if (!projectData.cables || !projectData.circuits) {
+          toast({ title: "Invalid project file format", variant: "destructive" });
+          return;
+        }
+        
+        // Load the data by making API calls
+        for (const cable of projectData.cables) {
+          await apiRequest("POST", "/api/cables", {
+            name: cable.name,
+            fiberCount: cable.fiberCount,
+            ribbonSize: cable.ribbonSize,
+            type: cable.type,
+          });
+        }
+        
+        // Refetch cables to get new IDs
+        const newCables = await queryClient.fetchQuery({ queryKey: ["/api/cables"] }) as Cable[];
+        
+        // Map old cable IDs to new cable IDs
+        const cableIdMap = new Map<string, string>();
+        projectData.cables.forEach((oldCable: Cable, index: number) => {
+          const newCable = newCables.find(c => 
+            c.name === oldCable.name && 
+            c.fiberCount === oldCable.fiberCount && 
+            c.type === oldCable.type
+          );
+          if (newCable) {
+            cableIdMap.set(oldCable.id, newCable.id);
+          }
+        });
+        
+        // Load circuits with new cable IDs
+        for (const circuit of projectData.circuits) {
+          const newCableId = cableIdMap.get(circuit.cableId);
+          const newFeedCableId = circuit.feedCableId ? cableIdMap.get(circuit.feedCableId) : null;
+          
+          if (newCableId) {
+            await apiRequest("POST", "/api/circuits", {
+              cableId: newCableId,
+              circuitId: circuit.circuitId,
+              position: circuit.position,
+              fiberStart: circuit.fiberStart,
+              fiberEnd: circuit.fiberEnd,
+              isSpliced: circuit.isSpliced,
+              feedCableId: newFeedCableId,
+              feedFiberStart: circuit.feedFiberStart,
+              feedFiberEnd: circuit.feedFiberEnd,
+            });
+          }
+        }
+        
+        queryClient.invalidateQueries({ queryKey: ["/api/cables"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/circuits"] });
+        
+        toast({ title: "Project loaded successfully" });
+      } catch (error) {
+        console.error('Load error:', error);
+        toast({ title: "Failed to load project file", variant: "destructive" });
+      }
+    };
+    input.click();
+  };
 
   const handleCableSubmit = (data: InsertCable) => {
     if (editingCable) {
@@ -202,43 +234,20 @@ export default function Home() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setHistoryDialogOpen(true)}
-                data-testid="button-history"
+                onClick={handleLoad}
+                data-testid="button-load"
               >
-                <History className="h-4 w-4 mr-2" />
-                History
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  queryClient.invalidateQueries({ queryKey: ["/api/cables"] });
-                  queryClient.invalidateQueries({ queryKey: ["/api/circuits"] });
-                  queryClient.invalidateQueries({ queryKey: ["/api/saves"] });
-                  toast({ title: "Data refreshed from server" });
-                }}
-                data-testid="button-refresh"
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setResetDialogOpen(true)}
-                data-testid="button-reset"
-              >
-                <RotateCcw className="h-4 w-4 mr-2" />
-                Reset
+                <Upload className="h-4 w-4 mr-2" />
+                Load
               </Button>
               <Button
                 variant="default"
                 size="sm"
-                onClick={() => setStartNewDialogOpen(true)}
-                data-testid="button-start-new"
+                onClick={handleSave}
+                data-testid="button-save"
               >
-                <FilePlus className="h-4 w-4 mr-2" />
-                Start New
+                <Save className="h-4 w-4 mr-2" />
+                Save
               </Button>
             </div>
           </div>
@@ -645,55 +654,6 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={startNewDialogOpen} onOpenChange={setStartNewDialogOpen}>
-        <AlertDialogContent data-testid="dialog-start-new-confirm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Start New Project</AlertDialogTitle>
-            <AlertDialogDescription>
-              Your current project will be automatically saved with a date/time stamp. 
-              All current cables and circuits will be cleared to start fresh.
-              Are you sure you want to continue?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-start-new-cancel">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => startNewMutation.mutate()}
-              data-testid="button-start-new-confirm"
-            >
-              Save & Start New
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
-        <AlertDialogContent data-testid="dialog-reset-confirm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Reset All Data</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete all cables and circuits without saving. 
-              This action cannot be undone.
-              Are you sure you want to continue?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-reset-cancel">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => resetMutation.mutate()}
-              data-testid="button-reset-confirm"
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Reset All Data
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <HistoryDialog 
-        open={historyDialogOpen} 
-        onOpenChange={setHistoryDialogOpen} 
-      />
 
     </div>
   );
