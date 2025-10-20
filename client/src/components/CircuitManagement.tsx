@@ -519,7 +519,7 @@ export function CircuitManagement({ cable }: CircuitManagementProps) {
             </Badge>
           )}
           <span className="text-sm text-muted-foreground" data-testid="text-cable-size">
-            Fiber Count: {totalAssignedFibers}/{cable.fiberCount}
+            Total Fiber Count: {totalAssignedFibers}/{cable.fiberCount}
           </span>
         </div>
       </CardHeader>
