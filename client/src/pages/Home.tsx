@@ -449,7 +449,32 @@ export default function Home() {
                               const circuitIdParts = circuit.circuitId.split(',');
                               const circuitPrefix = circuitIdParts[0] || "";
                               const circuitRange = circuitIdParts[1] || "";
-                              const [rangeStart, rangeEnd] = circuitRange.split('-').map(n => parseInt(n.trim()));
+                              const rangeParts = circuitRange.split('-');
+                              
+                              // Safety check for valid circuit ID format
+                              if (rangeParts.length !== 2 || !rangeParts[0] || !rangeParts[1]) {
+                                return [(
+                                  <TableRow key={circuit.id} className={rowBgColor} data-testid={`row-spliced-circuit-${circuit.id}`}>
+                                    <TableCell colSpan={allFullRibbons ? 5 : 7} className="text-center text-muted-foreground">
+                                      Circuit {circuit.circuitId} in {distributionCable?.name} - Invalid circuit ID format.
+                                    </TableCell>
+                                  </TableRow>
+                                )];
+                              }
+                              
+                              const rangeStart = parseInt(rangeParts[0].trim());
+                              const rangeEnd = parseInt(rangeParts[1].trim());
+                              
+                              // Safety check for valid numbers
+                              if (isNaN(rangeStart) || isNaN(rangeEnd)) {
+                                return [(
+                                  <TableRow key={circuit.id} className={rowBgColor} data-testid={`row-spliced-circuit-${circuit.id}`}>
+                                    <TableCell colSpan={allFullRibbons ? 5 : 7} className="text-center text-muted-foreground">
+                                      Circuit {circuit.circuitId} in {distributionCable?.name} - Invalid circuit number range.
+                                    </TableCell>
+                                  </TableRow>
+                                )];
+                              }
                               
                               if (allFullRibbons) {
                                 // Full ribbon view: show based on actual fiber positions
@@ -461,6 +486,18 @@ export default function Home() {
                                 const distFiberEnd = circuit.fiberEnd;
                                 const feedFiberStart = circuit.feedFiberStart || circuit.fiberStart;
                                 const feedFiberEnd = circuit.feedFiberEnd || circuit.fiberEnd;
+                                
+                                // Safety check for valid fiber positions
+                                if (!distFiberStart || !distFiberEnd || !feedFiberStart || !feedFiberEnd ||
+                                    isNaN(distFiberStart) || isNaN(distFiberEnd) || isNaN(feedFiberStart) || isNaN(feedFiberEnd)) {
+                                  return [(
+                                    <TableRow key={circuit.id} className={rowBgColor} data-testid={`row-spliced-circuit-${circuit.id}`}>
+                                      <TableCell colSpan={5} className="text-center text-muted-foreground">
+                                        Circuit {circuit.circuitId} in {distributionCable?.name} - Invalid fiber positions.
+                                      </TableCell>
+                                    </TableRow>
+                                  )];
+                                }
                                 
                                 // Find which ribbons this circuit spans on distribution side
                                 const distStartRibbon = getRibbonNumber(distFiberStart);
@@ -528,6 +565,18 @@ export default function Home() {
                               } else {
                                 // Fiber view: show one row per fiber (original behavior)
                                 const fiberRows = [];
+                                
+                                // Safety check for valid fiber positions
+                                if (!circuit.fiberStart || !circuit.fiberEnd || isNaN(circuit.fiberStart) || isNaN(circuit.fiberEnd)) {
+                                  return [(
+                                    <TableRow key={circuit.id} className={rowBgColor} data-testid={`row-spliced-circuit-${circuit.id}`}>
+                                      <TableCell colSpan={7} className="text-center text-muted-foreground">
+                                        Circuit {circuit.circuitId} in {distributionCable?.name} - Invalid fiber positions.
+                                      </TableCell>
+                                    </TableRow>
+                                  )];
+                                }
+                                
                                 for (let i = 0; i < circuit.fiberEnd - circuit.fiberStart + 1; i++) {
                                   const distFiber = circuit.fiberStart + i;
                                   const feedFiber = (circuit.feedFiberStart || circuit.fiberStart) + i;
