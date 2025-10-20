@@ -557,8 +557,9 @@ export function CircuitManagement({ cable }: CircuitManagementProps) {
                   {cable.type === "Distribution" && (
                     <TableHead className="w-[10%]">Splice</TableHead>
                   )}
-                  <TableHead className={cable.type === "Distribution" ? "w-[30%]" : "w-[40%]"}>Circuit ID</TableHead>
-                  <TableHead className={cable.type === "Distribution" ? "w-[45%]" : "w-[45%]"}>Fiber Strands</TableHead>
+                  <TableHead className={cable.type === "Distribution" ? "w-[25%]" : "w-[30%]"}>Circuit ID</TableHead>
+                  <TableHead className={cable.type === "Distribution" ? "w-[35%]" : "w-[35%]"}>Fiber Strands</TableHead>
+                  <TableHead className="w-[15%]">Fiber Count</TableHead>
                   <TableHead className="w-[15%] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -602,6 +603,9 @@ export function CircuitManagement({ cable }: CircuitManagementProps) {
                       </TableCell>
                       <TableCell className="font-mono text-sm" data-testid={`text-fiber-range-${circuit.id}`}>
                         {ribbonDisplay}
+                      </TableCell>
+                      <TableCell className="text-sm" data-testid={`text-fiber-count-${circuit.id}`}>
+                        {circuit.fiberEnd - circuit.fiberStart + 1}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
