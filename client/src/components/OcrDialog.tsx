@@ -91,8 +91,12 @@ export function OcrDialog({ open, onOpenChange, onTextExtracted }: OcrDialogProp
 
       const { data: { text } } = await worker.recognize(selectedImage);
       
+      console.log('OCR Raw Text:', text);
+      
       // Clean the OCR text using the circuit ID cleaning function
       const cleanedText = cleanOcrText(text);
+      
+      console.log('OCR Cleaned Text:', cleanedText);
       
       setExtractedText(cleanedText);
       
