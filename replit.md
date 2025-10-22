@@ -70,12 +70,10 @@ Preferred communication style: Simple, everyday language.
 **OCR (Optical Character Recognition):**
 - Browser-based OCR using Tesseract.js (works completely offline)
 - **Two locations:** "Scan Image" button in Add Cable dialog's Circuit IDs field, and Scan icon next to Circuit ID input in Circuit Management
-- **Three capture methods:**
-  1. **Upload** - Choose image file from computer
-  2. **Paste** - Paste screenshot from clipboard (Win+Shift+S / Cmd+Shift+4) - **RECOMMENDED for snipping part of screen**
-  3. **Capture** - Browser-based screen capture (select window/screen/tab in real-time)
+- **Two capture methods:**
+  1. **Paste** - Paste screenshot from clipboard (Win+Shift+S / Cmd+Shift+4) - **RECOMMENDED for snipping part of screen**
+  2. **Upload** - Choose image file from computer
 - **Snip Part of Screen Workflow (Recommended):** Use OS snipping tool (Win+Shift+S or Cmd+Shift+4) to select screen region, then click Paste button in OCR dialog
-- Screen capture uses browser's native `getDisplayMedia` API (requires user permission)
 - Automatically extracts text from images for Circuit ID entry
 - Progress indicator shows OCR processing status (0-100%)
 - Edit extracted text before using

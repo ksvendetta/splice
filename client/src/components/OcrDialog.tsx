@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
-import { Camera, Upload, Copy, CheckCircle2, Monitor } from "lucide-react";
+import { Camera, Upload, Copy, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface OcrDialogProps {
@@ -69,60 +69,6 @@ export function OcrDialog({ open, onOpenChange, onTextExtracted }: OcrDialogProp
         description: "Please upload an image file instead",
         variant: "destructive" 
       });
-    }
-  };
-
-  const handleScreenCapture = async () => {
-    try {
-      // Request screen capture permission
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { 
-          mediaSource: 'screen',
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        } as any
-      });
-
-      // Create video element to capture frame
-      const video = document.createElement('video');
-      video.srcObject = stream;
-      video.play();
-
-      // Wait for video to be ready
-      await new Promise((resolve) => {
-        video.onloadedmetadata = resolve;
-      });
-
-      // Create canvas and capture current frame
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      ctx?.drawImage(video, 0, 0);
-
-      // Stop the stream
-      stream.getTracks().forEach(track => track.stop());
-
-      // Convert to base64
-      const imageDataUrl = canvas.toDataURL('image/png');
-      setSelectedImage(imageDataUrl);
-      setExtractedText("");
-      
-      toast({ title: "Screen captured successfully" });
-    } catch (error: any) {
-      if (error.name === 'NotAllowedError') {
-        toast({ 
-          title: "Permission denied", 
-          description: "Screen capture permission was denied",
-          variant: "destructive" 
-        });
-      } else {
-        toast({ 
-          title: "Screen capture failed", 
-          description: "Please try the Upload or Paste option instead",
-          variant: "destructive" 
-        });
-      }
     }
   };
 
@@ -198,8 +144,8 @@ export function OcrDialog({ open, onOpenChange, onTextExtracted }: OcrDialogProp
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Upload/Paste/Capture Buttons */}
-          <div className="grid grid-cols-3 gap-2">
+          {/* Upload/Paste Buttons */}
+          <div className="grid grid-cols-2 gap-2">
             <input
               ref={fileInputRef}
               type="file"
@@ -223,14 +169,6 @@ export function OcrDialog({ open, onOpenChange, onTextExtracted }: OcrDialogProp
             >
               <Camera className="h-4 w-4 mr-2" />
               Paste
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleScreenCapture}
-              data-testid="button-capture-screen"
-            >
-              <Monitor className="h-4 w-4 mr-2" />
-              Capture
             </Button>
           </div>
 
@@ -336,10 +274,9 @@ export function OcrDialog({ open, onOpenChange, onTextExtracted }: OcrDialogProp
               </div>
               
               <div>
-                <p className="font-medium">Other options:</p>
+                <p className="font-medium">Alternative:</p>
                 <ul className="list-disc list-inside space-y-1 ml-2 text-sm">
-                  <li><strong>Upload:</strong> Choose a saved image file</li>
-                  <li><strong>Capture:</strong> Select entire window/screen/tab</li>
+                  <li><strong>Upload:</strong> Choose a saved image file from your computer</li>
                 </ul>
               </div>
 
