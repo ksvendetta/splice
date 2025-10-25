@@ -4,3 +4,10 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+.env
+.env.local
+.replit
+replit.nix
+scripts/create-github-repo.mjs
+/tmp
+*.log
