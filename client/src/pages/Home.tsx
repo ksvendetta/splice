@@ -168,7 +168,8 @@ export default function Home() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    await logger.info('file', `Project saved to file: ${filename}`, {
+    // Log in background (non-blocking)
+    logger.info('file', `Project saved to file: ${filename}`, {
       cablesCount: cables.length,
       circuitsCount: allCircuits.length
     });
@@ -195,7 +196,7 @@ export default function Home() {
         const projectData = JSON.parse(text);
         
         if (!projectData.cables || !projectData.circuits) {
-          await logger.error('file', 'Invalid project file format', { filename: file.name });
+          logger.error('file', 'Invalid project file format', { filename: file.name });
           toast({ title: "Invalid project file format", variant: "destructive" });
           return;
         }
@@ -211,7 +212,8 @@ export default function Home() {
         await db.cables.bulkAdd(projectData.cables);
         await db.circuits.bulkAdd(projectData.circuits);
         
-        await logger.info('file', `Project loaded from file: ${file.name}`, {
+        // Log in background (non-blocking)
+        logger.info('file', `Project loaded from file: ${file.name}`, {
           cablesCount: projectData.cables.length,
           circuitsCount: projectData.circuits.length
         });
@@ -225,7 +227,7 @@ export default function Home() {
           description: `${projectData.cables.length} cable(s) and ${projectData.circuits.length} circuit(s) restored`
         });
       } catch (error) {
-        await logger.error('file', 'Failed to load project file', { 
+        logger.error('file', 'Failed to load project file', { 
           filename: file.name,
           error: error instanceof Error ? error.message : String(error)
         });

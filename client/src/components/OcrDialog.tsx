@@ -82,7 +82,8 @@ export function OcrDialog({ open, onOpenChange, onTextExtracted }: OcrDialogProp
     setExtractedText("");
 
     try {
-      await logger.info('ocr', 'OCR processing started');
+      // Log in background (non-blocking)
+      logger.info('ocr', 'OCR processing started');
       
       const worker = await createWorker('eng', 1, {
         logger: (m) => {
@@ -101,7 +102,8 @@ export function OcrDialog({ open, onOpenChange, onTextExtracted }: OcrDialogProp
       
       await worker.terminate();
       
-      await logger.info('ocr', 'OCR text extracted successfully', {
+      // Log in background (non-blocking)
+      logger.info('ocr', 'OCR text extracted successfully', {
         rawTextLength: text.length,
         cleanedTextLength: cleanedText.length,
         cleanedText: cleanedText.substring(0, 100) // Log first 100 chars
@@ -109,7 +111,8 @@ export function OcrDialog({ open, onOpenChange, onTextExtracted }: OcrDialogProp
       
       toast({ title: "Text extracted successfully" });
     } catch (error) {
-      await logger.error('ocr', 'OCR processing failed', {
+      // Log in background (non-blocking)
+      logger.error('ocr', 'OCR processing failed', {
         error: error instanceof Error ? error.message : String(error)
       });
       toast({ 
