@@ -2,7 +2,7 @@
 
 ## Overview
 
-This application is a **Progressive Web App (PWA)** for professional fiber optic cable splicing management. It runs completely offline with all data stored locally in the browser using IndexedDB, allowing users to install the app from their browser and use it without any internet connection. The app features a checkbox-based system for marking circuits as spliced, automatic fiber position calculation, splice connection management, complete data persistence across sessions, and comprehensive debug logging for troubleshooting.
+This application is a **Progressive Web App (PWA)** for professional fiber optic cable splicing management. It runs completely offline with all data stored locally in the browser using IndexedDB, allowing users to install the app from their browser and use it without any internet connection. The app features a checkbox-based system for marking circuits as spliced, automatic fiber position calculation, splice connection management, and complete data persistence across sessions.
 
 ## User Preferences
 
@@ -28,11 +28,10 @@ Preferred communication style: Simple, everyday language.
 ### Data Storage Solutions
 
 **Storage Implementation:** IndexedDB (browser database) using Dexie library for offline-first PWA architecture.
-**Database:** `FiberSpliceDB` version 3, stored in browser's IndexedDB, persists indefinitely.
+**Database:** `FiberSpliceDB` version 2, stored in browser's IndexedDB, persists indefinitely.
 **IndexedDB Schema:**
 - **Cables Store:** `id` (primary key), `name`, `fiberCount`, `ribbonSize` (12), `type` ("Feed" or "Distribution"). Indexed: id, name, type.
 - **Circuits Store:** `id`, `cableId`, `circuitId`, `position`, `fiberStart`, `fiberEnd`, `isSpliced` (0/1), `feedCableId`, `feedFiberStart`, `feedFiberEnd`. Indexed: id, cableId, position, isSpliced.
-- **Logs Store:** `id` (primary key), `timestamp` (ISO 8601), `level` ('info'|'warning'|'error'), `category` ('cable'|'circuit'|'ocr'|'file'|'system'), `message`, `data` (JSON string). Indexed: id, timestamp, level, category.
 - All data persists across browser sessions and page reloads.
 **Storage Abstraction:** Storage layer provides clean API for CRUD operations, called directly by query client (no HTTP involved).
 
@@ -99,34 +98,14 @@ Preferred communication style: Simple, everyday language.
 - Real-time validation for fiber count matching cable capacity.
 - Visual feedback on assigned/total fiber count.
 **User Interface:**
-- Dynamic tab system: **InputData** tab (cable and circuit management) with Cable icon, separate **Splice** tabs for each Distribution cable with Workflow icon, and **Debug** tab with Bug icon.
+- Dynamic tab system: **InputData** tab (cable and circuit management) with Cable icon, and separate **Splice** tabs for each Distribution cable with Workflow icon.
 - InputData tab features cable list, cable details, circuit management, and splice checkboxes.
 - Each Distribution cable gets its own Splice tab (e.g., "Splice dist1", "Splice dist2") showing only that cable's splice mappings.
 - Splice tabs feature a two-row header with "Feed" and "Distribution" sections, cable names showing "Name - FiberCount" format, and detailed color-coded fiber/ribbon mapping.
-- Debug tab displays comprehensive system logs with filtering, export, and refresh capabilities.
 - Alternating row colors (white/gray-200) by circuit ID for visual grouping.
 - **Label Usage:** Cable details section shows "Cable Size: X", Circuit management header shows "Fiber Count: X/Y" (X assigned out of Y total).
 - **Pass/Fail Status:** Both cable cards and circuit details use consistent logic (Pass only when ALL fibers are assigned: assigned fibers === cable capacity).
 - Responsive design with a professional technical interface.
-**Debug Logging System:**
-- Comprehensive audit trail of all operations stored in IndexedDB (offline-capable).
-- **Logger Categories:** cable, circuit, ocr, file, system.
-- **Log Levels:** info, warning, error (color-coded badges).
-- **Logged Operations:**
-  - Cable: create, update, delete (with fiber counts and circuit counts).
-  - Circuit: create, update, splice/unsplice, delete.
-  - OCR: processing start, success (with text metrics), failure.
-  - File: save (with counts), load (with counts), errors.
-- **Debug Tab Features:**
-  - Sortable log table (timestamp, level, category, message, data).
-  - Level filter (All, Info, Warning, Error).
-  - Category filter (All, Cable, Circuit, OCR, File, System).
-  - Refresh button to reload logs.
-  - Export button to download logs as JSON.
-  - Clear all button to delete all logs.
-  - Log count indicator showing filtered/total.
-- **Auto-Cleanup:** Keeps last 1000 logs or 7 days, whichever is more recent (runs probabilistically).
-- **Development Console:** Logs also appear in browser console during development.
 
 ## External Dependencies
 
@@ -141,5 +120,4 @@ Preferred communication style: Simple, everyday language.
 - Styling: `tailwindcss`, `class-variance-authority`, `clsx`, `tailwind-merge`.
 - Date handling: `date-fns`.
 - Utilities: `nanoid`, `cmdk`.
-- Debug logging: Custom logger class with IndexedDB persistence.
 **Development Tools:** TypeScript, ESBuild, Replit-specific Vite plugins (`vite-plugin-runtime-error-modal`, `vite-plugin-cartographer`, `vite-plugin-dev-banner`), PostCSS.
