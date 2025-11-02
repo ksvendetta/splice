@@ -24,11 +24,9 @@ import { CableCard } from "@/components/CableCard";
 import { CableForm } from "@/components/CableForm";
 import { CableVisualization } from "@/components/CableVisualization";
 import { CircuitManagement } from "@/components/CircuitManagement";
-import { DebugTab } from "@/components/DebugTab";
-import { Plus, Cable as CableIcon, Workflow, Save, Upload, RotateCcw, Edit2, Check, X, Bug } from "lucide-react";
+import { Plus, Cable as CableIcon, Workflow, Save, Upload, RotateCcw, Edit2, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { logger } from "@/lib/logger";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import {
@@ -168,12 +166,6 @@ export default function Home() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    // Log in background (non-blocking)
-    logger.info('file', `Project saved to file: ${filename}`, {
-      cablesCount: cables.length,
-      circuitsCount: allCircuits.length
-    });
-    
     setSaveDialogOpen(false);
     setSaveFileName("");
     
@@ -196,7 +188,6 @@ export default function Home() {
         const projectData = JSON.parse(text);
         
         if (!projectData.cables || !projectData.circuits) {
-          logger.error('file', 'Invalid project file format', { filename: file.name });
           toast({ title: "Invalid project file format", variant: "destructive" });
           return;
         }
@@ -212,12 +203,6 @@ export default function Home() {
         await db.cables.bulkAdd(projectData.cables);
         await db.circuits.bulkAdd(projectData.circuits);
         
-        // Log in background (non-blocking)
-        logger.info('file', `Project loaded from file: ${file.name}`, {
-          cablesCount: projectData.cables.length,
-          circuitsCount: projectData.circuits.length
-        });
-        
         // Invalidate queries to refresh the UI
         queryClient.invalidateQueries({ queryKey: ["/api/cables"] });
         queryClient.invalidateQueries({ queryKey: ["/api/circuits"] });
@@ -227,10 +212,6 @@ export default function Home() {
           description: `${projectData.cables.length} cable(s) and ${projectData.circuits.length} circuit(s) restored`
         });
       } catch (error) {
-        logger.error('file', 'Failed to load project file', { 
-          filename: file.name,
-          error: error instanceof Error ? error.message : String(error)
-        });
         toast({ title: "Failed to load project file", variant: "destructive" });
       }
     };
@@ -318,10 +299,6 @@ export default function Home() {
                 Splice {distCable.name}
               </TabsTrigger>
             ))}
-            <TabsTrigger value="debug" data-testid="tab-debug">
-              <Bug className="h-4 w-4 mr-2" />
-              Debug
-            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="input" className="space-y-6">
@@ -799,10 +776,6 @@ export default function Home() {
               </TabsContent>
             );
           })}
-
-          <TabsContent value="debug">
-            <DebugTab />
-          </TabsContent>
         </Tabs>
       </main>
 
