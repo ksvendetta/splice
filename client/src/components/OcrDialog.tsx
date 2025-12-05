@@ -81,7 +81,7 @@ export function OcrDialog({ open, onOpenChange, onTextExtracted }: OcrDialogProp
     setExtractedText("");
 
     try {
-      const worker = await createWorker('eng_best', 1, {
+      const worker = await createWorker('eng', 1, {
         logger: (m) => {
           if (m.status === 'recognizing text') {
             setProgress(Math.round(m.progress * 100));

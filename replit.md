@@ -86,7 +86,7 @@ Preferred communication style: Simple, everyday language.
   - Example: "A,61-144 NC A Peake" → "A,61-144"
 - Progress indicator shows OCR processing status (0-100%)
 - Edit extracted text before using
-- Uses `eng_best` model (high-accuracy LSTM) for better font recognition
+- Uses high-accuracy LSTM model (`4.0.0_best_int` - integerized best model by default)
 - Best results with clear, printed text (works with English)
 **Circuit ID Management (Auto-Calculated Fiber Positions with Edit and Reorder):**
 - Simplified input: `circuitId` is the only required input.
