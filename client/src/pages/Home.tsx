@@ -25,7 +25,7 @@ import { CableCard } from "@/components/CableCard";
 import { CableForm } from "@/components/CableForm";
 import { CableVisualization } from "@/components/CableVisualization";
 import { CircuitManagement } from "@/components/CircuitManagement";
-import { Plus, Cable as CableIcon, Workflow, Save, Upload, RotateCcw, Edit2, Check, X } from "lucide-react";
+import { Plus, Cable as CableIcon, Workflow, Save, Upload, RotateCcw, Edit2, Check, X, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -303,65 +303,90 @@ export default function Home() {
           </TabsList>
 
           <TabsContent value="input" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold">Cables</h2>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      setEditingCable(null);
-                      setCableDialogOpen(true);
-                    }}
-                    data-testid="button-add-cable"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Cable
-                  </Button>
-                </div>
-
-                <ScrollArea className="h-[600px] pr-4">
-                  <div className="space-y-2">
-                    {cablesLoading ? (
-                      <div className="text-center py-12 text-muted-foreground">Loading cables...</div>
-                    ) : sortedCables.length === 0 ? (
-                      <div className="text-center py-12 text-muted-foreground" data-testid="text-no-cables">
-                        No cables yet. Add a cable to get started.
-                      </div>
-                    ) : (
-                      sortedCables.map((cable) => {
-                        const cableCircuits = allCircuits.filter(c => c.cableId === cable.id);
-                        const totalAssignedFibers = cableCircuits.reduce((sum, circuit) => {
-                          return sum + (circuit.fiberEnd - circuit.fiberStart + 1);
-                        }, 0);
-                        const isValid = totalAssignedFibers === cable.fiberCount;
-                        
-                        return (
-                          <CableCard
-                            key={cable.id}
-                            cable={cable}
-                            isSelected={selectedCableId === cable.id}
-                            onSelect={() => setSelectedCableId(cable.id)}
-                            onEdit={() => {
-                              setEditingCable(cable);
-                              setCableDialogOpen(true);
-                            }}
-                            onDelete={() => deleteCableMutation.mutate(cable.id)}
-                            isValid={isValid}
-                          />
-                        );
-                      })
-                    )}
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-center gap-2">
+                {cablesLoading ? (
+                  <div className="text-muted-foreground">Loading cables...</div>
+                ) : sortedCables.length === 0 ? (
+                  <div className="text-muted-foreground" data-testid="text-no-cables">
+                    No cables yet. Add a cable to get started.
                   </div>
-                </ScrollArea>
+                ) : (
+                  sortedCables.map((cable) => {
+                    const cableCircuits = allCircuits.filter(c => c.cableId === cable.id);
+                    const totalAssignedFibers = cableCircuits.reduce((sum, circuit) => {
+                      return sum + (circuit.fiberEnd - circuit.fiberStart + 1);
+                    }, 0);
+                    const isValid = totalAssignedFibers === cable.fiberCount;
+                    
+                    return (
+                      <Button
+                        key={cable.id}
+                        variant={selectedCableId === cable.id ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setSelectedCableId(cable.id)}
+                        className="flex items-center gap-2"
+                        data-testid={`button-cable-${cable.id}`}
+                      >
+                        <CableIcon className="h-4 w-4" />
+                        <span>{cable.name}</span>
+                        <span className="text-xs opacity-70">({cable.fiberCount})</span>
+                        <span className={`ml-1 text-xs px-1.5 py-0.5 rounded ${isValid ? 'bg-green-500/20 text-green-600 dark:text-green-400' : 'bg-red-500/20 text-red-600 dark:text-red-400'}`}>
+                          {isValid ? 'Pass' : 'Fail'}
+                        </span>
+                      </Button>
+                    );
+                  })
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditingCable(null);
+                    setCableDialogOpen(true);
+                  }}
+                  data-testid="button-add-cable"
+                  className="border-dashed"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Cable
+                </Button>
               </div>
 
-              <div className="lg:col-span-2">
+              <div>
                 <Card>
-                  <CardHeader>
+                  <CardHeader className="flex flex-row items-center justify-between gap-4">
                     <CardTitle>
                       {selectedCable ? `Cable: ${selectedCable.name}` : "Select a cable"}
                     </CardTitle>
+                    {selectedCable && (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditingCable(selectedCable);
+                            setCableDialogOpen(true);
+                          }}
+                          data-testid="button-edit-cable"
+                        >
+                          <Edit2 className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => {
+                            deleteCableMutation.mutate(selectedCable.id);
+                            setSelectedCableId(null);
+                          }}
+                          data-testid="button-delete-cable"
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
+                    )}
                   </CardHeader>
                   <CardContent>
                     {selectedCable ? (
