@@ -66,6 +66,15 @@ export const storage = {
     await db.circuits.update(id, updates);
   },
 
+  async bulkUpdateCircuits(updates: Array<{ id: string; changes: Partial<Circuit> }>): Promise<void> {
+    // Use transaction for better performance
+    await db.transaction('rw', db.circuits, async () => {
+      for (const { id, changes } of updates) {
+        await db.circuits.update(id, changes);
+      }
+    });
+  },
+
   async deleteCircuit(id: string): Promise<void> {
     await db.circuits.delete(id);
   },

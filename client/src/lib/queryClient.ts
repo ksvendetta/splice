@@ -1,5 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { storage } from "./storage";
+import type { Circuit } from "@shared/schema";
 
 // Storage-based query function (replaces API fetch)
 export const getQueryFn: <T>() => QueryFunction<T> =
@@ -192,9 +193,11 @@ export async function apiRequest(
         // Update the circuit ID
         await storage.updateCircuit(id, { circuitId: newCircuitId });
         
-        // Recalculate fiber positions for all circuits in this cable
+        // Recalculate fiber positions for all circuits in this cable using batch update
         const allCircuits = await storage.getCircuitsByCableId(circuit.cableId);
         let currentFiberStart = 1;
+        
+        const bulkUpdates: Array<{ id: string; changes: Partial<Circuit> }> = [];
         
         for (const c of allCircuits) {
           const updatedCircuit = c.id === id ? { ...c, circuitId: newCircuitId } : c;
@@ -209,19 +212,21 @@ export async function apiRequest(
           const fiberStart = currentFiberStart;
           const fiberEnd = fiberStart + cFiberCount - 1;
           
-          await storage.updateCircuit(c.id, { fiberStart, fiberEnd });
+          bulkUpdates.push({ id: c.id, changes: { fiberStart, fiberEnd } });
           currentFiberStart = fiberEnd + 1;
         }
+        
+        await storage.bulkUpdateCircuits(bulkUpdates);
         
         // Update splice mappings in Distribution circuits that reference this Feed cable
         const cable = await storage.getCable(circuit.cableId);
         if (cable?.type === 'Feed') {
           const allDistCircuits = await storage.getAllCircuits();
+          const updatedFeedCircuits = await storage.getCircuitsByCableId(circuit.cableId);
+          const distBulkUpdates: Array<{ id: string; changes: Partial<Circuit> }> = [];
+          
           for (const distCircuit of allDistCircuits) {
             if (distCircuit.isSpliced === 1 && distCircuit.feedCableId === circuit.cableId) {
-              // Find the current Feed circuit this Distribution circuit is spliced to
-              const updatedFeedCircuits = await storage.getCircuitsByCableId(circuit.cableId);
-              
               // Parse Distribution circuit ID to get the range
               const distParts = distCircuit.circuitId.split(',');
               if (distParts.length === 2) {
@@ -250,10 +255,9 @@ export async function apiRequest(
                             const newFeedFiberStart = feedCircuit.fiberStart + offsetFromFeedStart;
                             const newFeedFiberEnd = feedCircuit.fiberStart + offsetFromFeedEnd;
                             
-                            // Update the Distribution circuit's splice mapping
-                            await storage.updateCircuit(distCircuit.id, {
-                              feedFiberStart: newFeedFiberStart,
-                              feedFiberEnd: newFeedFiberEnd
+                            distBulkUpdates.push({
+                              id: distCircuit.id,
+                              changes: { feedFiberStart: newFeedFiberStart, feedFiberEnd: newFeedFiberEnd }
                             });
                             break;
                           }
@@ -264,6 +268,10 @@ export async function apiRequest(
                 }
               }
             }
+          }
+          
+          if (distBulkUpdates.length > 0) {
+            await storage.bulkUpdateCircuits(distBulkUpdates);
           }
         }
         
@@ -294,8 +302,10 @@ export async function apiRequest(
         allCircuits[currentIndex] = allCircuits[newIndex];
         allCircuits[newIndex] = temp;
         
-        // Update position values and recalculate fiber positions
+        // Update position values and recalculate fiber positions using batch update
         let currentFiberStart = 1;
+        const moveBulkUpdates: Array<{ id: string; changes: Partial<Circuit> }> = [];
+        
         for (let i = 0; i < allCircuits.length; i++) {
           const c = allCircuits[i];
           
@@ -309,24 +319,25 @@ export async function apiRequest(
           const fiberStart = currentFiberStart;
           const fiberEnd = fiberStart + fiberCount - 1;
           
-          await storage.updateCircuit(c.id, { 
-            position: i, 
-            fiberStart, 
-            fiberEnd 
+          moveBulkUpdates.push({ 
+            id: c.id, 
+            changes: { position: i, fiberStart, fiberEnd }
           });
           
           currentFiberStart = fiberEnd + 1;
         }
         
+        await storage.bulkUpdateCircuits(moveBulkUpdates);
+        
         // Update splice mappings in Distribution circuits that reference this Feed cable
         const cable = await storage.getCable(circuit.cableId);
         if (cable?.type === 'Feed') {
           const allDistCircuits = await storage.getAllCircuits();
+          const updatedFeedCircuits = await storage.getCircuitsByCableId(circuit.cableId);
+          const moveDistBulkUpdates: Array<{ id: string; changes: Partial<Circuit> }> = [];
+          
           for (const distCircuit of allDistCircuits) {
             if (distCircuit.isSpliced === 1 && distCircuit.feedCableId === circuit.cableId) {
-              // Find the current Feed circuit this Distribution circuit is spliced to
-              const updatedFeedCircuits = await storage.getCircuitsByCableId(circuit.cableId);
-              
               // Parse Distribution circuit ID to get the range
               const distParts = distCircuit.circuitId.split(',');
               if (distParts.length === 2) {
@@ -355,10 +366,9 @@ export async function apiRequest(
                             const newFeedFiberStart = feedCircuit.fiberStart + offsetFromFeedStart;
                             const newFeedFiberEnd = feedCircuit.fiberStart + offsetFromFeedEnd;
                             
-                            // Update the Distribution circuit's splice mapping
-                            await storage.updateCircuit(distCircuit.id, {
-                              feedFiberStart: newFeedFiberStart,
-                              feedFiberEnd: newFeedFiberEnd
+                            moveDistBulkUpdates.push({
+                              id: distCircuit.id,
+                              changes: { feedFiberStart: newFeedFiberStart, feedFiberEnd: newFeedFiberEnd }
                             });
                             break;
                           }
@@ -369,6 +379,10 @@ export async function apiRequest(
                 }
               }
             }
+          }
+          
+          if (moveDistBulkUpdates.length > 0) {
+            await storage.bulkUpdateCircuits(moveDistBulkUpdates);
           }
         }
         
