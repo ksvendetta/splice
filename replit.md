@@ -99,9 +99,10 @@ Preferred communication style: Simple, everyday language.
 - Real-time validation for fiber count matching cable capacity.
 - Visual feedback on assigned/total fiber count.
 **User Interface:**
-- Dynamic tab system: **Home** tab (cable and circuit management) with Cable icon, and separate **Splice** tabs for each Distribution cable with Workflow icon.
+- Dynamic tab system: **Home** tab (cable and circuit management) with Cable icon, **Master Splices** tab with Layers icon, and separate **Splice** tabs for each Distribution cable with Workflow icon.
 - **Horizontal Cable Selection:** Cables displayed as a row of buttons below the main tabs (instead of a vertical sidebar). Each button shows cable icon, name, fiber count, and Pass/Fail status. Selected cable has filled style, unselected cables have outline style.
 - **Cable Management:** When a cable is selected, Edit and Delete buttons appear in the cable details card header for quick cable management.
+- **Master Splices Tab:** Groups ALL spliced circuits from ALL Distribution cables by their circuit ID prefix (the part before the comma, e.g., "pon" from "pon,1-12"). Each prefix gets its own collapsible Accordion section with the full splice mapping table.
 - Each Distribution cable gets its own Splice tab (e.g., "Splice dist1", "Splice dist2") showing only that cable's splice mappings.
 - Splice tabs feature a two-row header with "Feed" and "Distribution" sections, cable names showing "Name - FiberCount" format, and detailed color-coded fiber/ribbon mapping.
 - Alternating row colors (white/gray-200) by circuit ID for visual grouping.
