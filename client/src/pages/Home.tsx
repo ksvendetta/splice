@@ -634,22 +634,22 @@ export default function Home() {
                           No circuits marked as spliced for {prefix}.
                         </div>
                       ) : (
-                        <div className="rounded-md border overflow-x-auto">
-                          <Table className="text-sm">
+                        <div className="rounded-md border overflow-x-auto inline-block">
+                          <Table className="text-sm w-auto">
                             <TableHeader>
                               <TableRow className="bg-muted/50">
-                                <TableHead colSpan={allFullRibbons ? 2 : 3} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-1">Feed</TableHead>
-                                <TableHead className="text-center font-semibold py-1 whitespace-nowrap">Splices : {totalSpliceRows}</TableHead>
-                                <TableHead colSpan={allFullRibbons ? 2 : 3} className="text-center font-semibold bg-blue-100 dark:bg-blue-950/50 py-1">Distribution</TableHead>
+                                <TableHead colSpan={allFullRibbons ? 2 : 3} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-1 px-2">Feed</TableHead>
+                                <TableHead className="text-center font-semibold py-1 px-2 whitespace-nowrap">Splices : {totalSpliceRows}</TableHead>
+                                <TableHead colSpan={allFullRibbons ? 2 : 3} className="text-center font-semibold bg-blue-100 dark:bg-blue-950/50 py-1 px-2">Distribution</TableHead>
                               </TableRow>
                               <TableRow>
-                                <TableHead className="text-center py-1">Cable</TableHead>
-                                <TableHead className="text-center py-1 px-1 w-auto whitespace-nowrap">Ribbon</TableHead>
-                                {!allFullRibbons && <TableHead className="text-center py-1 px-1 w-auto whitespace-nowrap">Strand</TableHead>}
-                                <TableHead className="text-center py-1 px-1 w-auto whitespace-nowrap">Circuit</TableHead>
-                                {!allFullRibbons && <TableHead className="text-center py-1 px-1 w-auto whitespace-nowrap">Strand</TableHead>}
-                                <TableHead className="text-center py-1 px-1 w-auto whitespace-nowrap">Ribbon</TableHead>
-                                <TableHead className="text-center py-1">Cable</TableHead>
+                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
+                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">Ribbon</TableHead>
+                                {!allFullRibbons && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
+                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">Circuit</TableHead>
+                                {!allFullRibbons && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
+                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">Ribbon</TableHead>
+                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -746,15 +746,15 @@ export default function Home() {
                                     
                                     ribbonRows.push(
                                       <TableRow key={`${circuit.id}-segment-${currentDistFiber}`} className={rowBgColor}>
-                                        <TableCell className="text-center font-mono py-1">{feedCable.name} - {feedCable.fiberCount}</TableCell>
-                                        <TableCell className={`text-center font-mono font-semibold py-1 px-1 whitespace-nowrap ${feedRibbonColor.colorClass}`}>
+                                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{feedCable.name} - {feedCable.fiberCount}</TableCell>
+                                        <TableCell className={`text-center font-mono font-semibold py-1 px-2 whitespace-nowrap ${feedRibbonColor.colorClass}`}>
                                           R{currentFeedRibbon}:{feedStrandStart}{feedStrandStart !== feedStrandEnd ? `-${feedStrandEnd}` : ''}
                                         </TableCell>
-                                        <TableCell className="text-center font-mono font-semibold py-1 px-1 whitespace-nowrap">{circuitPrefix},{circuitStart}-{circuitEnd}</TableCell>
-                                        <TableCell className={`text-center font-mono font-semibold py-1 px-1 whitespace-nowrap ${distRibbonColor.colorClass}`}>
+                                        <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">{circuitPrefix},{circuitStart}-{circuitEnd}</TableCell>
+                                        <TableCell className={`text-center font-mono font-semibold py-1 px-2 whitespace-nowrap ${distRibbonColor.colorClass}`}>
                                           R{currentDistRibbon}:{distStrandStart}{distStrandStart !== distStrandEnd ? `-${distStrandEnd}` : ''}
                                         </TableCell>
-                                        <TableCell className="text-center font-mono py-1">{distributionCable?.name} - {distributionCable?.fiberCount}</TableCell>
+                                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{distributionCable?.name} - {distributionCable?.fiberCount}</TableCell>
                                       </TableRow>
                                     );
                                     
@@ -793,21 +793,21 @@ export default function Home() {
                                     
                                     fiberRows.push(
                                       <TableRow key={`${circuit.id}-fiber-${i}`} className={rowBgColor}>
-                                        <TableCell className="text-center font-mono py-1">{feedCable.name} - {feedCable.fiberCount}</TableCell>
-                                        <TableCell className={`text-center font-mono font-semibold py-1 px-1 whitespace-nowrap ${feedRibbonColor.colorClass}`}>R{feedRibbon}</TableCell>
-                                        <TableCell className="text-center py-1 px-1">
-                                          <div className={`inline-block px-2 py-0.5 rounded border border-black ${feedColor.bg} ${feedColor.text} font-mono font-semibold text-xs`}>
+                                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{feedCable.name} - {feedCable.fiberCount}</TableCell>
+                                        <TableCell className={`text-center font-mono font-semibold py-1 px-2 whitespace-nowrap ${feedRibbonColor.colorClass}`}>R{feedRibbon}</TableCell>
+                                        <TableCell className="text-center py-1 px-2">
+                                          <div className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedColor.bg} ${feedColor.text} font-mono font-semibold text-xs`}>
                                             {feedStrand}
                                           </div>
                                         </TableCell>
-                                        <TableCell className="text-center font-mono font-semibold py-1 px-1 whitespace-nowrap">{circuitPrefix},{circuitNumber}</TableCell>
-                                        <TableCell className="text-center py-1 px-1">
-                                          <div className={`inline-block px-2 py-0.5 rounded border border-black ${distColor.bg} ${distColor.text} font-mono font-semibold text-xs`}>
+                                        <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">{circuitPrefix},{circuitNumber}</TableCell>
+                                        <TableCell className="text-center py-1 px-2">
+                                          <div className={`inline-block px-1.5 py-0.5 rounded border border-black ${distColor.bg} ${distColor.text} font-mono font-semibold text-xs`}>
                                             {distStrand}
                                           </div>
                                         </TableCell>
-                                        <TableCell className={`text-center font-mono font-semibold py-1 px-1 whitespace-nowrap ${distRibbonColor.colorClass}`}>R{distRibbon}</TableCell>
-                                        <TableCell className="text-center font-mono py-1">{distributionCable?.name} - {distributionCable?.fiberCount}</TableCell>
+                                        <TableCell className={`text-center font-mono font-semibold py-1 px-2 whitespace-nowrap ${distRibbonColor.colorClass}`}>R{distRibbon}</TableCell>
+                                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{distributionCable?.name} - {distributionCable?.fiberCount}</TableCell>
                                       </TableRow>
                                     );
                                   }
@@ -859,22 +859,22 @@ export default function Home() {
                         No circuits marked as spliced yet for {distCable.name}. Check circuits in the Home tab.
                       </div>
                     ) : (
-                      <div className="rounded-md border overflow-x-auto">
-                        <Table className="text-sm">
+                      <div className="rounded-md border overflow-x-auto inline-block">
+                        <Table className="text-sm w-auto">
                           <TableHeader>
                             <TableRow className="bg-muted/50">
-                              <TableHead colSpan={allFullRibbons ? 2 : 3} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-1">Feed</TableHead>
-                              <TableHead className="text-center font-semibold py-1 whitespace-nowrap">Splices : {totalSpliceRows}</TableHead>
-                              <TableHead colSpan={allFullRibbons ? 2 : 3} className="text-center font-semibold bg-blue-100 dark:bg-blue-950/50 py-1">Distribution</TableHead>
+                              <TableHead colSpan={allFullRibbons ? 2 : 3} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-1 px-2">Feed</TableHead>
+                              <TableHead className="text-center font-semibold py-1 px-2 whitespace-nowrap">Splices : {totalSpliceRows}</TableHead>
+                              <TableHead colSpan={allFullRibbons ? 2 : 3} className="text-center font-semibold bg-blue-100 dark:bg-blue-950/50 py-1 px-2">Distribution</TableHead>
                             </TableRow>
                             <TableRow>
-                              <TableHead className="text-center py-1">Cable</TableHead>
-                              <TableHead className="text-center py-1 px-1 w-auto whitespace-nowrap">Ribbon</TableHead>
-                              {!allFullRibbons && <TableHead className="text-center py-1 px-1 w-auto whitespace-nowrap">Strand</TableHead>}
-                              <TableHead className="text-center py-1 px-1 w-auto whitespace-nowrap">Circuit</TableHead>
-                              {!allFullRibbons && <TableHead className="text-center py-1 px-1 w-auto whitespace-nowrap">Strand</TableHead>}
-                              <TableHead className="text-center py-1 px-1 w-auto whitespace-nowrap">Ribbon</TableHead>
-                              <TableHead className="text-center py-1">Cable</TableHead>
+                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
+                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Ribbon</TableHead>
+                              {!allFullRibbons && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
+                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Circuit</TableHead>
+                              {!allFullRibbons && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
+                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Ribbon</TableHead>
+                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -1018,15 +1018,15 @@ export default function Home() {
                                   
                                   ribbonRows.push(
                                     <TableRow key={`${circuit.id}-segment-${currentDistFiber}`} className={rowBgColor} data-testid={`row-ribbon-${circuit.id}-${currentDistFiber}`}>
-                                      <TableCell className="text-center font-mono py-1">{feedCable.name} - {feedCable.fiberCount}</TableCell>
-                                      <TableCell className={`text-center font-mono font-semibold py-1 px-1 whitespace-nowrap ${feedRibbonColor.colorClass}`}>
+                                      <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{feedCable.name} - {feedCable.fiberCount}</TableCell>
+                                      <TableCell className={`text-center font-mono font-semibold py-1 px-2 whitespace-nowrap ${feedRibbonColor.colorClass}`}>
                                         R{currentFeedRibbon}:{feedStrandStart}{feedStrandStart !== feedStrandEnd ? `-${feedStrandEnd}` : ''}
                                       </TableCell>
-                                      <TableCell className="text-center font-mono font-semibold py-1 px-1 whitespace-nowrap">{circuitPrefix},{circuitStart}-{circuitEnd}</TableCell>
-                                      <TableCell className={`text-center font-mono font-semibold py-1 px-1 whitespace-nowrap ${distRibbonColor.colorClass}`}>
+                                      <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">{circuitPrefix},{circuitStart}-{circuitEnd}</TableCell>
+                                      <TableCell className={`text-center font-mono font-semibold py-1 px-2 whitespace-nowrap ${distRibbonColor.colorClass}`}>
                                         R{currentDistRibbon}:{distStrandStart}{distStrandStart !== distStrandEnd ? `-${distStrandEnd}` : ''}
                                       </TableCell>
-                                      <TableCell className="text-center font-mono py-1">{distributionCable?.name} - {distributionCable?.fiberCount}</TableCell>
+                                      <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{distributionCable?.name} - {distributionCable?.fiberCount}</TableCell>
                                     </TableRow>
                                   );
                                   
@@ -1068,21 +1068,21 @@ export default function Home() {
                                   
                                   fiberRows.push(
                                     <TableRow key={`${circuit.id}-fiber-${i}`} className={rowBgColor} data-testid={`row-fiber-${circuit.id}-${i}`}>
-                                      <TableCell className="text-center font-mono py-1">{feedCable.name} - {feedCable.fiberCount}</TableCell>
-                                      <TableCell className={`text-center font-mono font-semibold py-1 px-1 whitespace-nowrap ${feedRibbonColor.colorClass}`}>R{feedRibbon}</TableCell>
-                                      <TableCell className="text-center py-1 px-1">
-                                        <div className={`inline-block px-2 py-0.5 rounded border border-black ${feedColor.bg} ${feedColor.text} font-mono font-semibold text-xs`}>
+                                      <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{feedCable.name} - {feedCable.fiberCount}</TableCell>
+                                      <TableCell className={`text-center font-mono font-semibold py-1 px-2 whitespace-nowrap ${feedRibbonColor.colorClass}`}>R{feedRibbon}</TableCell>
+                                      <TableCell className="text-center py-1 px-2">
+                                        <div className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedColor.bg} ${feedColor.text} font-mono font-semibold text-xs`}>
                                           {feedStrand}
                                         </div>
                                       </TableCell>
-                                      <TableCell className="text-center font-mono font-semibold py-1 px-1 whitespace-nowrap">{circuitPrefix},{circuitNumber}</TableCell>
-                                      <TableCell className="text-center py-1 px-1">
-                                        <div className={`inline-block px-2 py-0.5 rounded border border-black ${distColor.bg} ${distColor.text} font-mono font-semibold text-xs`}>
+                                      <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">{circuitPrefix},{circuitNumber}</TableCell>
+                                      <TableCell className="text-center py-1 px-2">
+                                        <div className={`inline-block px-1.5 py-0.5 rounded border border-black ${distColor.bg} ${distColor.text} font-mono font-semibold text-xs`}>
                                           {distStrand}
                                         </div>
                                       </TableCell>
-                                      <TableCell className={`text-center font-mono font-semibold py-1 px-1 whitespace-nowrap ${distRibbonColor.colorClass}`}>R{distRibbon}</TableCell>
-                                      <TableCell className="text-center font-mono py-1">{distributionCable?.name} - {distributionCable?.fiberCount}</TableCell>
+                                      <TableCell className={`text-center font-mono font-semibold py-1 px-2 whitespace-nowrap ${distRibbonColor.colorClass}`}>R{distRibbon}</TableCell>
+                                      <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{distributionCable?.name} - {distributionCable?.fiberCount}</TableCell>
                                     </TableRow>
                                   );
                                 }
