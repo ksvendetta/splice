@@ -11,3 +11,5 @@ replit.nix
 scripts/create-github-repo.mjs
 /tmp
 *.log
+# Electron release builds (too large for GitHub)
+release/
