@@ -857,7 +857,7 @@ export function CircuitManagement({ cable, mode = "fiber" }: CircuitManagementPr
                     <TableHead className="w-[10%]">Splice</TableHead>
                   )}
                   <TableHead className={cable.type === "Distribution" ? "w-[30%]" : "w-[35%]"}>Circuit ID</TableHead>
-                  <TableHead>{mode === "fiber" ? "Fiber Strands" : "Pair Strands"}</TableHead>
+                  <TableHead>{mode === "fiber" ? "Ribbons/Strands" : "Binders/Pairs"}</TableHead>
                   <TableHead className="w-[12%]">{mode === "fiber" ? "Fiber Count" : "Pair Count"}</TableHead>
                   <TableHead className="w-[15%] text-right">Actions</TableHead>
                 </TableRow>
