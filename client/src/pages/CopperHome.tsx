@@ -1083,6 +1083,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
             }}
             isLoading={createCableMutation.isPending || updateCableMutation.isPending}
             mode={mode}
+            existingCables={cables}
           />
         </DialogContent>
       </Dialog>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertCableSchema, type InsertCable, type Cable, cableTypes } from "@shared/schema";
@@ -31,11 +31,25 @@ interface CableFormProps {
   onCancel: () => void;
   isLoading?: boolean;
   mode?: "fiber" | "copper";
+  existingCables?: Cable[];
 }
 
-export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber" }: CableFormProps) {
+function getNextCableName(type: "Feed" | "Distribution", existingCables: Cable[]): string {
+  const prefix = type === "Feed" ? "f" : "d";
+  const count = existingCables.filter(c => c.type === type).length;
+  return `${prefix}${count + 1}`;
+}
+
+export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber", existingCables = [] }: CableFormProps) {
   const [ocrDialogOpen, setOcrDialogOpen] = useState(false);
-  
+  const userEditedName = useRef(false);
+
+  const hasFeedCable = existingCables.some(c => c.type === "Feed");
+  const defaultType = cable
+    ? (cable.type as "Feed" | "Distribution")
+    : (hasFeedCable ? "Distribution" : "Feed");
+  const defaultName = cable ? cable.name : getNextCableName(defaultType, existingCables);
+
   const form = useForm<InsertCable>({
     resolver: zodResolver(insertCableSchema),
     defaultValues: cable ? {
@@ -43,13 +57,21 @@ export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber"
       fiberCount: cable.fiberCount,
       type: cable.type as "Feed" | "Distribution",
     } : {
-      name: "",
+      name: defaultName,
       fiberCount: mode === "fiber" ? 24 : 50,
-      type: "Feed",
+      type: defaultType,
       circuitIds: [],
     },
   });
-  
+
+  const watchedType = form.watch("type");
+
+  useEffect(() => {
+    if (!cable && !userEditedName.current) {
+      form.setValue("name", getNextCableName(watchedType as "Feed" | "Distribution", existingCables));
+    }
+  }, [watchedType]);
+
   // Custom submit handler that normalizes circuit IDs
   const handleFormSubmit = (data: InsertCable) => {
     // Normalize circuit IDs if they exist
@@ -62,24 +84,6 @@ export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber"
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Cable Name</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder="e.g., Cable2, Feed1, Distribution-24"
-                  {...field}
-                  data-testid="input-cable-name"
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
         <FormField
           control={form.control}
           name="type"
@@ -100,6 +104,28 @@ export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber"
                   ))}
                 </SelectContent>
               </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Cable Name</FormLabel>
+              <FormControl>
+                <Input
+                  placeholder="e.g., f1, d2"
+                  {...field}
+                  onChange={(e) => {
+                    userEditedName.current = true;
+                    field.onChange(e);
+                  }}
+                  data-testid="input-cable-name"
+                />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
@@ -190,11 +216,11 @@ export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber"
           // Get current circuit IDs
           const currentValue = form.getValues('circuitIds') || [];
           const currentText = currentValue.join('\n');
-          
+
           // Append extracted text
           const newText = currentText ? `${currentText}\n${text}` : text;
           const newLines = newText.split('\n').filter(line => line.trim());
-          
+
           // Update form
           form.setValue('circuitIds', newLines);
         }}

@@ -1635,6 +1635,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
             }}
             isLoading={createCableMutation.isPending || updateCableMutation.isPending}
             mode={mode}
+            existingCables={cables}
           />
         </DialogContent>
       </Dialog>
