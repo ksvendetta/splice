@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Cable, Circuit, InsertCable, parseCircuitIdParts } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -25,7 +25,8 @@ import { CableCard } from "@/components/CableCard";
 import { CableForm } from "@/components/CableForm";
 import { CableVisualization } from "@/components/CableVisualization";
 import { CircuitManagement } from "@/components/CircuitManagement";
-import { Plus, Cable as CableIcon, Workflow, Save, Upload, RotateCcw, Edit2, Check, X, Trash2, Layers, Home as HomeIcon, Phone, Sparkles } from "lucide-react";
+import { SpliceTree } from "@/components/SpliceTree";
+import { Plus, Cable as CableIcon, Workflow, Save, Upload, RotateCcw, Edit2, Check, X, Trash2, Layers, Home as HomeIcon, Phone, Sparkles, ChevronLeft } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Switch as ToggleSwitch } from "@/components/ui/switch";
@@ -45,6 +46,8 @@ import {
 export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"; setMode: (mode: "fiber" | "copper") => void }) {
   const { toast } = useToast();
   const [selectedCableId, setSelectedCableId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("input");
+  const [contextCableId, setContextCableId] = useState<string | null>(null);
   const [cableDialogOpen, setCableDialogOpen] = useState(false);
   const [editingCable, setEditingCable] = useState<Cable | null>(null);
   const [editingType, setEditingType] = useState(false);
@@ -55,6 +58,17 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveFileName, setSaveFileName] = useState("");
   const [useBinderView, setUseBinderView] = useState(true);
+
+  // Splice naming state
+  const [mainSpliceName, setMainSpliceName] = useState<string>(() => {
+    return localStorage.getItem(`spliceName-${mode}`) ?? "";
+  });
+  const [spliceNamingDialogOpen, setSpliceNamingDialogOpen] = useState(false);
+  const [spliceNamingInput, setSpliceNamingInput] = useState("");
+  const [spliceNamingContext, setSpliceNamingContext] = useState<"main" | "sub">("main");
+  const [pendingSpliceContextCable, setPendingSpliceContextCable] = useState<Cable | null>(null);
+  const [editingMainSpliceName, setEditingMainSpliceName] = useState(false);
+  const [tempMainSpliceName, setTempMainSpliceName] = useState("");
 
   // Use mode-specific API endpoints to keep fiber and copper data separate
   const apiMode = mode === "fiber" ? "fiber" : "copper";
@@ -69,12 +83,96 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
     queryKey: [circuitsEndpoint],
   });
 
-  // Sort cables: Feed first, then Distribution (maintaining insertion order within each type)
+  const handleCableSelect = (cableId: string) => {
+    setSelectedCableId(cableId);
+    setActiveTab("input");
+  };
+
+  // Clicking a splice-tree node switches context
+  const handleTreeNodeClick = (cableId: string) => {
+    const cable = cables.find(c => c.id === cableId);
+    if (!cable) return;
+    if (cable.type === "Feed") {
+      // Clicking a feed → go back to root context
+      setContextCableId(null);
+      setSelectedCableId(cableId);
+      setActiveTab("input");
+    } else {
+      // Clicking a distribution → switch to its sub-splice context
+      setContextCableId(cableId);
+      setSelectedCableId(null);
+      setActiveTab("input");
+    }
+  };
+
+  // Safety: if the context cable is deleted, reset to root
+  useEffect(() => {
+    if (contextCableId !== null && !cables.find(c => c.id === contextCableId)) {
+      setContextCableId(null);
+      setSelectedCableId(null);
+      setActiveTab("input");
+    }
+  }, [cables, contextCableId]);
+
+  // Sync mainSpliceName when mode changes
+  useEffect(() => {
+    const stored = localStorage.getItem(`spliceName-${mode}`) ?? "";
+    setMainSpliceName(stored);
+  }, [mode]);
+
+  // Show fresh-start naming dialog when there are no cables and no name yet
+  useEffect(() => {
+    if (!cablesLoading && cables.length === 0 && !mainSpliceName) {
+      setSpliceNamingContext("main");
+      setSpliceNamingInput("");
+      setSpliceNamingDialogOpen(true);
+    }
+  }, [cablesLoading, cables.length, mainSpliceName]);
+
+  // Filter cables by the current splice context
+  const contextCables = useMemo(() => {
+    if (contextCableId === null) {
+      // Root context: Feed cables + Distribution cables with no parentCableId
+      return cables.filter(c => c.type === "Feed" || !c.parentCableId);
+    }
+    // Sub-splice context: the context cable (as feed) + its direct children
+    const contextCable = cables.find(c => c.id === contextCableId);
+    const children = cables.filter(c => c.parentCableId === contextCableId && c.type === "Distribution");
+    return contextCable ? [contextCable, ...children] : children;
+  }, [cables, contextCableId]);
+
+  // Sort context cables: "Feed" first, then Distribution
   const sortedCables = useMemo(() => {
-    const feedCables = cables.filter(c => c.type === "Feed");
-    const distributionCables = cables.filter(c => c.type === "Distribution");
-    return [...feedCables, ...distributionCables];
-  }, [cables]);
+    const feeds = contextCables.filter(c => {
+      if (contextCableId !== null && c.id === contextCableId) return true;
+      return c.type === "Feed";
+    });
+    const dists = contextCables.filter(c => {
+      if (contextCableId !== null && c.id === contextCableId) return false;
+      return c.type === "Distribution";
+    });
+    return [...feeds, ...dists];
+  }, [contextCables, contextCableId]);
+
+  // Breadcrumb trail for sub-splice navigation
+  const contextBreadcrumbs = useMemo(() => {
+    const crumbs: Array<{ id: string | null; name: string }> = [
+      { id: null, name: mainSpliceName || "Main Splice" }
+    ];
+    if (contextCableId === null) return crumbs;
+    const chain: Cable[] = [];
+    let current = cables.find(c => c.id === contextCableId);
+    while (current) {
+      chain.unshift(current);
+      current = current.parentCableId
+        ? cables.find(c => c.id === current!.parentCableId)
+        : undefined;
+    }
+    for (const cable of chain) {
+      crumbs.push({ id: cable.id, name: cable.spliceName ?? cable.name });
+    }
+    return crumbs;
+  }, [cables, contextCableId, mainSpliceName]);
 
   const createCableMutation = useMutation({
     mutationFn: async (data: InsertCable) => {
@@ -139,11 +237,25 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
       await queryClient.refetchQueries({ queryKey: [cablesEndpoint] });
       await queryClient.refetchQueries({ queryKey: [circuitsEndpoint] });
       setSelectedCableId(null);
+      setContextCableId(null);
       setResetDialogOpen(false);
+      // Clear splice name so fresh-start dialog appears again
+      localStorage.removeItem(`spliceName-${mode}`);
+      setMainSpliceName("");
       toast({ title: "All data has been reset" });
     },
     onError: () => {
       toast({ title: "Failed to reset data", variant: "destructive" });
+    },
+  });
+
+  const updateCableSpliceNameMutation = useMutation({
+    mutationFn: async ({ id, spliceName }: { id: string; spliceName: string }) => {
+      const cable = cables.find(c => c.id === id)!;
+      return await apiRequest("PUT", `${cablesEndpoint}/${id}`, { ...cable, spliceName });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [cablesEndpoint] });
     },
   });
 
@@ -239,6 +351,9 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
   const handleCableSubmit = (data: InsertCable) => {
     if (editingCable) {
       updateCableMutation.mutate({ id: editingCable.id, data });
+    } else if (contextCableId && data.type === "Distribution") {
+      // In sub-splice context: only distribution cables belong to this context
+      createCableMutation.mutate({ ...data, parentCableId: contextCableId });
     } else {
       createCableMutation.mutate(data);
     }
@@ -247,20 +362,30 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
 
   const splicedCircuits = useMemo(() => {
     return allCircuits.filter((circuit) => {
-      const cable = cables.find(c => c.id === circuit.cableId);
-      return circuit.isSpliced === 1 && cable?.type === "Distribution";
+      const cable = contextCables.find(c => c.id === circuit.cableId);
+      if (!cable) return false;
+      // In sub-splice context, context cable is treated as feed; exclude it
+      if (contextCableId !== null && cable.id === contextCableId) return false;
+      return circuit.isSpliced === 1 && cable.type === "Distribution";
     });
-  }, [allCircuits, cables]);
+  }, [allCircuits, contextCables, contextCableId]);
 
-  // Get all Distribution cables for creating splice tabs
+  // Distribution cables in current context (excludes the context cable itself)
   const distributionCables = useMemo(() => {
-    return cables.filter(c => c.type === "Distribution");
-  }, [cables]);
+    return contextCables.filter(c => {
+      if (contextCableId !== null && c.id === contextCableId) return false;
+      return c.type === "Distribution";
+    });
+  }, [contextCables, contextCableId]);
 
-  // Get all Feed cables for creating splice tabs
+  // Feed cables in current context
   const feedCables = useMemo(() => {
-    return cables.filter(c => c.type === "Feed");
-  }, [cables]);
+    if (contextCableId !== null) {
+      const contextCable = cables.find(c => c.id === contextCableId);
+      return contextCable ? [contextCable] : [];
+    }
+    return contextCables.filter(c => c.type === "Feed");
+  }, [contextCables, contextCableId, cables]);
 
   const selectedCable = cables.find((c) => c.id === selectedCableId);
 
@@ -320,7 +445,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
   };
 
   // Render splice table for a list of spliced circuits
-  const renderSpliceTable = (splicedCircuitsList: Circuit[], tableIdPrefix: string) => {
+  const renderSpliceTable = (splicedCircuitsList: Circuit[], tableIdPrefix: string, feedLabel: string = "Feed") => {
     // Calculate total splice rows based on current view mode
     const totalSpliceRows = useBinderView
       ? splicedCircuitsList.reduce((sum, circuit) => {
@@ -337,7 +462,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
           <TableHeader>
             <TableRow className="bg-muted/50">
               <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle">#</TableHead>
-              <TableHead colSpan={useBinderView ? 2 : 3} rowSpan={2} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-1 px-2 align-middle">Feed</TableHead>
+              <TableHead colSpan={useBinderView ? 2 : 3} rowSpan={2} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-1 px-2 align-middle">{feedLabel}</TableHead>
               <TableHead className="text-center py-1 px-2">
                 <div className="flex items-center justify-center gap-1">
                   <Label htmlFor={`view-toggle-${tableIdPrefix}`} className="text-xs text-muted-foreground">Pairs</Label>
@@ -635,16 +760,134 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
       </header>
 
       <main className="container mx-auto px-6 py-6">
-        <Tabs defaultValue="input" className="w-full">
+
+        {/* Splice Tree — always visible above tabs */}
+        {cables.length > 0 && (
+          <div className="mb-6">
+            <SpliceTree
+              cables={cables}
+              circuits={allCircuits}
+              selectedCableId={selectedCableId}
+              contextCableId={contextCableId}
+              mainSpliceName={mainSpliceName}
+              onNodeClick={handleTreeNodeClick}
+              onAddSplice={(cable) => {
+                // Open naming dialog before entering sub-splice context
+                setPendingSpliceContextCable(cable);
+                setSpliceNamingInput(cable.spliceName ?? cable.name);
+                setSpliceNamingContext("sub");
+                setSpliceNamingDialogOpen(true);
+              }}
+            />
+          </div>
+        )}
+
+        {/* Centered splice name title — always shown when cables exist */}
+        {cables.length > 0 && (
+          <div className="mb-4 flex flex-col items-center gap-1">
+            {/* Main splice name — editable */}
+            {contextCableId === null ? (
+              <div className="flex items-center gap-1">
+                {editingMainSpliceName ? (
+                  <>
+                    <Input
+                      value={tempMainSpliceName}
+                      onChange={e => setTempMainSpliceName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") {
+                          const name = tempMainSpliceName.trim() || "Main Splice";
+                          localStorage.setItem(`spliceName-${mode}`, name);
+                          setMainSpliceName(name);
+                          setEditingMainSpliceName(false);
+                        }
+                        if (e.key === "Escape") setEditingMainSpliceName(false);
+                      }}
+                      className="h-7 w-48 text-center text-base font-semibold"
+                      autoFocus
+                    />
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                      onClick={() => {
+                        const name = tempMainSpliceName.trim() || "Main Splice";
+                        localStorage.setItem(`spliceName-${mode}`, name);
+                        setMainSpliceName(name);
+                        setEditingMainSpliceName(false);
+                      }}>
+                      <Check className="h-3 w-3" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                      onClick={() => setEditingMainSpliceName(false)}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </>
+                ) : (
+                  <button
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-border bg-muted shadow-sm text-sm font-semibold text-foreground hover:bg-accent hover:text-primary transition-colors group"
+                    onClick={() => {
+                      setTempMainSpliceName(mainSpliceName);
+                      setEditingMainSpliceName(true);
+                    }}
+                  >
+                    {mainSpliceName || "Main Splice"}
+                    <Edit2 className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              /* Sub-splice context: back button + current splice name only */
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2"
+                  onClick={() => {
+                    const contextCable = cables.find(c => c.id === contextCableId);
+                    const parentId = contextCable?.parentCableId ?? null;
+                    const parentCable = parentId ? cables.find(c => c.id === parentId) : null;
+                    if (parentCable && parentCable.type === "Distribution") {
+                      setContextCableId(parentId);
+                    } else {
+                      setContextCableId(null);
+                    }
+                    setSelectedCableId(null);
+                    setActiveTab("input");
+                  }}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                {(() => {
+                  const contextCable = cables.find(c => c.id === contextCableId);
+                  const currentName = contextCable?.spliceName ?? contextCable?.name ?? "Splice";
+                  return (
+                    <button
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-border bg-muted shadow-sm text-sm font-semibold text-foreground hover:bg-accent hover:text-primary transition-colors group"
+                      onClick={() => {
+                        if (!contextCable) return;
+                        setPendingSpliceContextCable(contextCable);
+                        setSpliceNamingInput(contextCable.spliceName ?? "");
+                        setSpliceNamingContext("sub");
+                        setSpliceNamingDialogOpen(true);
+                      }}
+                    >
+                      {currentName}
+                      <Edit2 className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+                    </button>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        )}
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           {/* Tab Navigation with Section Labels */}
           <div className="mb-6">
             <TabsList data-testid="tabs-main" className="w-full justify-start bg-transparent p-0">
-              {/* Home Section - No Header */}
+              {/* Cables Section - No Header */}
               <div className="inline-flex flex-col">
                 <div className="h-6 mb-2"></div>
                 <TabsTrigger value="input" data-testid="tab-input-data">
-                  <HomeIcon className="h-4 w-4 mr-2" />
-                  Home
+                  <CableIcon className="h-4 w-4 mr-2" />
+                  Cables
                 </TabsTrigger>
               </div>
 
@@ -696,16 +939,24 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                       </h3>
                     </div>
                     <div className="inline-flex">
-                      {distributionCables.map((distCable) => (
-                        <TabsTrigger
-                          key={distCable.id}
-                          value={`splice-${distCable.id}`}
-                          data-testid={`tab-splice-${distCable.id}`}
-                        >
-                          <CableIcon className="h-4 w-4 mr-2" />
-                          {distCable.name}
-                        </TabsTrigger>
-                      ))}
+                      {distributionCables.map((distCable) => {
+                          const parentCable = distCable.parentCableId
+                            ? cables.find(c => c.id === distCable.parentCableId)
+                            : null;
+                          return (
+                            <TabsTrigger
+                              key={distCable.id}
+                              value={`splice-${distCable.id}`}
+                              data-testid={`tab-splice-${distCable.id}`}
+                            >
+                              <CableIcon className="h-4 w-4 mr-2" />
+                              {distCable.name}
+                              {parentCable && (
+                                <span className="ml-1 text-xs opacity-60">↑{parentCable.name}</span>
+                              )}
+                            </TabsTrigger>
+                          );
+                        })}
                       {feedCables.map((feedCable) => (
                         <TabsTrigger
                           key={`feed-${feedCable.id}`}
@@ -725,7 +976,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
 
           <TabsContent value="input" className="space-y-6">
             <div className="space-y-6">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-start gap-2">
                 {cablesLoading ? (
                   <div className="text-muted-foreground">Loading cables...</div>
                 ) : sortedCables.length === 0 ? (
@@ -735,41 +986,53 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                 ) : (
                   sortedCables.map((cable) => {
                     const cableCircuits = allCircuits.filter(c => c.cableId === cable.id);
-                    const totalAssignedPairs = cableCircuits.reduce((sum, circuit) => {
-                      return sum + (circuit.fiberEnd - circuit.fiberStart + 1);
-                    }, 0);
-                    const isValid = totalAssignedPairs === cable.fiberCount;
-
-                    const typeColorClass = cable.type === "Feed"
+                    const totalPairs = cableCircuits.reduce((sum, c) => sum + (c.fiberEnd - c.fiberStart + 1), 0);
+                    const isValid = totalPairs === cable.fiberCount;
+                    const isContextFeedCable = contextCableId !== null && cable.id === contextCableId;
+                    const typeColorClass = (cable.type === "Feed" || isContextFeedCable)
                       ? "bg-green-100 dark:bg-green-950/50 hover:bg-green-200 dark:hover:bg-green-900/50"
                       : "bg-blue-100 dark:bg-blue-950/50 hover:bg-blue-200 dark:hover:bg-blue-900/50";
-
                     return (
-                      <Button
-                        key={cable.id}
-                        variant={selectedCableId === cable.id ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setSelectedCableId(cable.id)}
-                        className={`flex items-center gap-2 ${selectedCableId !== cable.id ? typeColorClass : ''}`}
-                        data-testid={`button-cable-${cable.id}`}
-                      >
-                        <CableIcon className="h-4 w-4" />
-                        <span>{cable.name}</span>
-                        <span className="text-xs opacity-70">({cable.fiberCount})</span>
-                        <span className={`ml-1 text-xs px-1.5 py-0.5 rounded ${isValid ? 'bg-green-500/20 text-green-600 dark:text-green-400' : 'bg-red-500/20 text-red-600 dark:text-red-400'}`}>
-                          {isValid ? 'Pass' : 'Fail'}
-                        </span>
-                      </Button>
+                      <div key={cable.id} className="flex flex-col gap-0.5">
+                        <Button
+                          variant={selectedCableId === cable.id ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handleCableSelect(cable.id)}
+                          className={`flex items-center gap-2 ${selectedCableId !== cable.id ? typeColorClass : ''}`}
+                          data-testid={`button-cable-${cable.id}`}
+                        >
+                          <CableIcon className="h-4 w-4" />
+                          <span>{cable.name}</span>
+                          <span className="text-xs opacity-70">({cable.fiberCount})</span>
+                          <span className={`ml-1 text-xs px-1.5 py-0.5 rounded ${isValid ? 'bg-green-500/20 text-green-600 dark:text-green-400' : 'bg-red-500/20 text-red-600 dark:text-red-400'}`}>
+                            {isValid ? 'Pass' : 'Fail'}
+                          </span>
+                        </Button>
+                        {cable.type === "Distribution" && cable.id !== contextCableId && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-dashed text-xs h-7"
+                            data-testid={`button-add-splice-${cable.id}`}
+                            onClick={() => {
+                              setPendingSpliceContextCable(cable);
+                              setSpliceNamingInput(cable.spliceName ?? cable.name);
+                              setSpliceNamingContext("sub");
+                              setSpliceNamingDialogOpen(true);
+                            }}
+                          >
+                            <Plus className="h-3 w-3 mr-1" />
+                            Add Splice
+                          </Button>
+                        )}
+                      </div>
                     );
                   })
                 )}
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    setEditingCable(null);
-                    setCableDialogOpen(true);
-                  }}
+                  onClick={() => { setEditingCable(null); setCableDialogOpen(true); }}
                   data-testid="button-add-cable"
                   className="border-dashed"
                 >
@@ -941,7 +1204,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                           </div>
                         </div>
 
-                        <CircuitManagement cable={selectedCable} mode={mode} />
+                        <CircuitManagement cable={selectedCable} mode={mode} isContextFeed={contextCableId !== null && selectedCable?.id === contextCableId} />
                       </div>
                     ) : (
                       <div className="text-center py-12 text-muted-foreground">
@@ -997,6 +1260,9 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
           })()}
 
           {distributionCables.map((distCable) => {
+            const parentCable = distCable.parentCableId
+              ? cables.find(c => c.id === distCable.parentCableId)
+              : null;
             const cableSplicedCircuits = splicedCircuits.filter(c => c.cableId === distCable.id).sort((a, b) => {
               try {
                 const partsA = parseCircuitIdParts(a.circuitId);
@@ -1012,17 +1278,22 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
               <TabsContent key={distCable.id} value={`splice-${distCable.id}`}>
                 <Card>
                   <CardHeader>
-                    <CardTitle>Splice Mapping - {distCable.name}</CardTitle>
+                    <CardTitle>
+                      Splice Mapping - {distCable.name}
+                      {parentCable && (
+                        <span className="ml-2 text-sm font-normal text-muted-foreground">(sub-splice from {parentCable.name})</span>
+                      )}
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     {circuitsLoading ? (
                       <div className="text-center py-12 text-muted-foreground">Loading circuits...</div>
                     ) : cableSplicedCircuits.length === 0 ? (
                       <div className="text-center py-12 text-muted-foreground" data-testid={`text-no-spliced-circuits-${distCable.id}`}>
-                        No circuits marked as spliced yet for {distCable.name}. Check circuits in the Home tab.
+                        No circuits marked as spliced yet for {distCable.name}. Select this cable in the Cables tab and mark circuits as spliced.
                       </div>
                     ) : (
-                      renderSpliceTable(cableSplicedCircuits, `dist-${distCable.id}`)
+                      renderSpliceTable(cableSplicedCircuits, `dist-${distCable.id}`, parentCable ? `Source (${parentCable.name})` : "Feed")
                     )}
                   </CardContent>
                 </Card>
@@ -1064,10 +1335,17 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
         </Tabs>
       </main>
 
-      <Dialog open={cableDialogOpen} onOpenChange={setCableDialogOpen}>
+      <Dialog open={cableDialogOpen} onOpenChange={(open) => {
+        setCableDialogOpen(open);
+        if (!open) {
+          setEditingCable(null);
+        }
+      }}>
         <DialogContent data-testid="dialog-cable-form">
           <DialogHeader>
-            <DialogTitle>{editingCable ? "Edit Cable" : "Add New Cable"}</DialogTitle>
+            <DialogTitle>
+              {editingCable ? "Edit Cable" : "Add New Cable"}
+            </DialogTitle>
             <DialogDescription>
               {editingCable
                 ? "Update cable details and circuit information"
@@ -1085,6 +1363,83 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
             mode={mode}
             existingCables={cables}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Splice Naming Dialog */}
+      <Dialog open={spliceNamingDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setSpliceNamingDialogOpen(false);
+          setPendingSpliceContextCable(null);
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {spliceNamingContext === "main" ? "Name This Splice" : "Name This Sub-Splice"}
+            </DialogTitle>
+            <DialogDescription>
+              {spliceNamingContext === "main"
+                ? "Give your splice a name to identify it"
+                : `Name the sub-splice branching from ${pendingSpliceContextCable?.name ?? "this cable"}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <Input
+              value={spliceNamingInput}
+              onChange={e => setSpliceNamingInput(e.target.value)}
+              placeholder={spliceNamingContext === "main" ? "e.g., Main Street Splice" : "e.g., Branch A"}
+              onKeyDown={e => {
+                if (e.key === "Enter") {
+                  if (spliceNamingContext === "main") {
+                    const name = spliceNamingInput.trim() || "Main Splice";
+                    localStorage.setItem(`spliceName-${mode}`, name);
+                    setMainSpliceName(name);
+                    setSpliceNamingDialogOpen(false);
+                  } else if (pendingSpliceContextCable) {
+                    const name = spliceNamingInput.trim();
+                    if (name) {
+                      updateCableSpliceNameMutation.mutate({ id: pendingSpliceContextCable.id, spliceName: name });
+                    }
+                    setContextCableId(pendingSpliceContextCable.id);
+                    setSelectedCableId(null);
+                    setActiveTab("input");
+                    setSpliceNamingDialogOpen(false);
+                    setPendingSpliceContextCable(null);
+                  }
+                }
+              }}
+              autoFocus
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => {
+              setSpliceNamingDialogOpen(false);
+              setPendingSpliceContextCable(null);
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={() => {
+              if (spliceNamingContext === "main") {
+                const name = spliceNamingInput.trim() || "Main Splice";
+                localStorage.setItem(`spliceName-${mode}`, name);
+                setMainSpliceName(name);
+                setSpliceNamingDialogOpen(false);
+              } else if (pendingSpliceContextCable) {
+                const name = spliceNamingInput.trim();
+                if (name) {
+                  updateCableSpliceNameMutation.mutate({ id: pendingSpliceContextCable.id, spliceName: name });
+                }
+                setContextCableId(pendingSpliceContextCable.id);
+                setSelectedCableId(null);
+                setActiveTab("input");
+                setSpliceNamingDialogOpen(false);
+                setPendingSpliceContextCable(null);
+              }
+            }}>
+              {spliceNamingContext === "main" ? "Save Name" : "Enter Sub-Splice"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

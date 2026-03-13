@@ -32,6 +32,8 @@ export const cables = pgTable("cables", {
   fiberCount: integer("fiber_count").notNull(),
   ribbonSize: integer("ribbon_size").notNull().default(12), // Always 12, not exposed in UI
   type: text("type").notNull(),
+  parentCableId: varchar("parent_cable_id"), // For sub-splices: which distribution cable this stems from
+  spliceName: varchar("splice_name"), // Optional display name for splice context (shown in tree instead of cable name)
 });
 
 // Circuits table - represents circuit IDs and fiber assignments within a cable
@@ -84,12 +86,14 @@ export const logs = pgTable("logs", {
 });
 
 // Insert schemas
-export const insertCableSchema = createInsertSchema(cables).omit({ 
+export const insertCableSchema = createInsertSchema(cables).omit({
   id: true,
   ribbonSize: true, // Always default to 12
 }).extend({
   type: z.enum(cableTypes),
   circuitIds: z.array(z.string()).optional(), // Circuit IDs to create with cable
+  parentCableId: z.string().optional(), // For sub-splices: which distribution cable this stems from
+  spliceName: z.string().optional(), // Optional display name for splice context
 });
 export const insertCircuitSchema = createInsertSchema(circuits).omit({ 
   id: true,

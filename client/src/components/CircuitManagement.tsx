@@ -24,9 +24,10 @@ import { normalizeCircuitId } from "@/lib/circuitIdUtils";
 interface CircuitManagementProps {
   cable: Cable;
   mode?: "fiber" | "copper";
+  isContextFeed?: boolean;
 }
 
-export function CircuitManagement({ cable, mode = "fiber" }: CircuitManagementProps) {
+export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false }: CircuitManagementProps) {
   const { toast } = useToast();
   const [circuitId, setCircuitId] = useState("");
   const [editingCircuitId, setEditingCircuitId] = useState<string | null>(null);
@@ -182,14 +183,25 @@ export function CircuitManagement({ cable, mode = "fiber" }: CircuitManagementPr
       const distStart = parseInt(distRangeParts[0]);
       const distEnd = parseInt(distRangeParts[1]);
 
-      console.log(`[SPLICE] Checking circuit: ${circuit.circuitId}, distStart: ${distStart}, distEnd: ${distEnd}`);
+      // Sub-splice cables have a parentCableId pointing to their parent distribution cable
+      const parentCableId = cable.parentCableId ?? undefined;
 
-      // Find ALL matching feed circuits that this distribution range overlaps with
+      console.log(`[SPLICE] Checking circuit: ${circuit.circuitId}, distStart: ${distStart}, distEnd: ${distEnd}, parentCableId: ${parentCableId}`);
+
+      // Find ALL matching source circuits that this distribution range overlaps with.
+      // For sub-splice cables: match against the parent distribution cable's circuits.
+      // For regular distribution cables: match against Feed cable circuits.
       const matchingFeedCircuits = allCircuits.filter(c => {
-        const feedCable = allCables.find(cable => cable.id === c.cableId);
-        if (feedCable?.type !== "Feed") return false;
+        const cCable = allCables.find(cc => cc.id === c.cableId);
+        if (parentCableId) {
+          // Sub-splice: only look at circuits belonging to the parent cable
+          if (c.cableId !== parentCableId) return false;
+        } else {
+          // Regular distribution: only look at Feed cable circuits
+          if (cCable?.type !== "Feed") return false;
+        }
 
-        // Parse Feed circuit ID
+        // Parse source circuit ID
         const feedParts = c.circuitId.split(',');
         if (feedParts.length !== 2) return false;
 
@@ -198,30 +210,32 @@ export function CircuitManagement({ cable, mode = "fiber" }: CircuitManagementPr
         // Check if prefixes match
         if (feedPrefix !== distributionPrefix) return false;
 
-        // Parse Feed range
+        // Parse source range
         const feedRangeParts = feedParts[1].trim().split('-');
         if (feedRangeParts.length !== 2) return false;
 
         const feedStart = parseInt(feedRangeParts[0]);
         const feedEnd = parseInt(feedRangeParts[1]);
 
-        // Check if distribution range overlaps with this feed range
+        // Check if distribution range overlaps with this source range
         const overlaps = distStart <= feedEnd && distEnd >= feedStart;
 
-        console.log(`[SPLICE] Checking feed circuit: ${c.circuitId}, feedStart: ${feedStart}, feedEnd: ${feedEnd}, overlaps: ${overlaps}`);
+        console.log(`[SPLICE] Checking source circuit: ${c.circuitId}, feedStart: ${feedStart}, feedEnd: ${feedEnd}, overlaps: ${overlaps}`);
 
         return overlaps;
       }).sort((a, b) => {
-        // Sort by feed range start to process in order
+        // Sort by source range start to process in order
         const aStart = parseInt(a.circuitId.split(',')[1].trim().split('-')[0]);
         const bStart = parseInt(b.circuitId.split(',')[1].trim().split('-')[0]);
         return aStart - bStart;
       });
 
+      const sourceLabel = parentCableId ? "parent cable" : "Feed";
+
       if (matchingFeedCircuits.length === 0) {
         toast({
-          title: "No matching Feed circuit found",
-          description: `Could not find a Feed circuit with prefix "${distributionPrefix}" that contains the range ${distStart}-${distEnd}`,
+          title: `No matching ${sourceLabel} circuit found`,
+          description: `Could not find a ${sourceLabel} circuit with prefix "${distributionPrefix}" that contains the range ${distStart}-${distEnd}`,
           variant: "destructive",
         });
         return;
@@ -282,6 +296,28 @@ export function CircuitManagement({ cable, mode = "fiber" }: CircuitManagementPr
           const firstCalculatedFeedFiberEnd = firstSplit.feedCircuit.fiberStart + firstOffsetFromFeedEnd;
 
           console.log(`[SPLICE] Splicing ${firstCircuitId} to ${firstSplit.feedCable?.name}: fibers ${firstCalculatedFeedFiberStart}-${firstCalculatedFeedFiberEnd}`);
+
+          // Check all splits for overlapping splices before committing any
+          for (const split of splits) {
+            const splitFiberStart = split.feedCircuit.fiberStart + (split.start - parseInt(split.feedCircuit.circuitId.split(',')[1].trim().split('-')[0]));
+            const splitFiberEnd = split.feedCircuit.fiberStart + (split.end - parseInt(split.feedCircuit.circuitId.split(',')[1].trim().split('-')[0]));
+            const overlapping = allCircuits.find(c => {
+              if (c.id === circuit.id) return false;
+              if (c.isSpliced !== 1) return false;
+              if (c.feedCableId !== split.feedCable?.id) return false;
+              if (!c.feedFiberStart || !c.feedFiberEnd) return false;
+              return splitFiberStart <= c.feedFiberEnd && splitFiberEnd >= c.feedFiberStart;
+            });
+            if (overlapping) {
+              const overlapCable = allCables.find(cc => cc.id === overlapping.cableId);
+              toast({
+                title: "Splice overlap detected",
+                description: `Feed fibers ${splitFiberStart}-${splitFiberEnd} are already spliced to "${overlapping.circuitId}" on ${overlapCable?.name ?? "another cable"}. Physical splice not possible.`,
+                variant: "destructive",
+              });
+              return;
+            }
+          }
 
           // Mark first split as spliced
           await apiRequest("PATCH", `/api/${mode}/circuits/${circuit.id}/toggle-spliced`, {
@@ -366,7 +402,7 @@ export function CircuitManagement({ cable, mode = "fiber" }: CircuitManagementPr
 
           toast({
             title: "Circuit split and spliced",
-            description: `Created ${splits.length} circuit(s) spanning ${matchingFeedCircuits.length} feed cable(s)`,
+            description: `Created ${splits.length} circuit(s) spanning ${matchingFeedCircuits.length} ${sourceLabel} circuit(s)`,
           });
         } catch (error) {
           console.error('[SPLICE] Error splitting circuit:', error);
@@ -400,6 +436,24 @@ export function CircuitManagement({ cable, mode = "fiber" }: CircuitManagementPr
         const calculatedFeedFiberEnd = matchingFeedCircuit.fiberStart + offsetFromFeedEnd;
 
         console.log(`[SPLICE] calculatedFeedFiberStart: ${calculatedFeedFiberStart}, calculatedFeedFiberEnd: ${calculatedFeedFiberEnd}`);
+
+        // Check for overlap: no other spliced circuit should already use these feed fibers
+        const overlapping = allCircuits.find(c => {
+          if (c.id === circuit.id) return false;
+          if (c.isSpliced !== 1) return false;
+          if (c.feedCableId !== feedCable?.id) return false;
+          if (!c.feedFiberStart || !c.feedFiberEnd) return false;
+          return calculatedFeedFiberStart <= c.feedFiberEnd && calculatedFeedFiberEnd >= c.feedFiberStart;
+        });
+        if (overlapping) {
+          const overlapCable = allCables.find(cc => cc.id === overlapping.cableId);
+          toast({
+            title: "Splice overlap detected",
+            description: `Feed fibers ${calculatedFeedFiberStart}-${calculatedFeedFiberEnd} are already spliced to "${overlapping.circuitId}" on ${overlapCable?.name ?? "another cable"}. Physical splice not possible.`,
+            variant: "destructive",
+          });
+          return;
+        }
 
         toggleSplicedMutation.mutate({
           circuitId: circuit.id,
@@ -853,10 +907,10 @@ export function CircuitManagement({ cable, mode = "fiber" }: CircuitManagementPr
             <Table>
               <TableHeader>
                 <TableRow>
-                  {cable.type === "Distribution" && (
+                  {cable.type === "Distribution" && !isContextFeed && (
                     <TableHead className="w-[10%]">Splice</TableHead>
                   )}
-                  <TableHead className={cable.type === "Distribution" ? "w-[30%]" : "w-[35%]"}>Circuit ID</TableHead>
+                  <TableHead className={cable.type === "Distribution" && !isContextFeed ? "w-[30%]" : "w-[35%]"}>Circuit ID</TableHead>
                   <TableHead>{mode === "fiber" ? "Ribbons/Strands" : "Binders/Pairs"}</TableHead>
                   <TableHead className="w-[12%]">{mode === "fiber" ? "Fiber Count" : "Pair Count"}</TableHead>
                   <TableHead className="w-[15%] text-right">Actions</TableHead>
@@ -873,7 +927,7 @@ export function CircuitManagement({ cable, mode = "fiber" }: CircuitManagementPr
                   
                   return (
                     <TableRow key={circuit.id} data-testid={`row-circuit-${circuit.id}`}>
-                      {cable.type === "Distribution" && (
+                      {cable.type === "Distribution" && !isContextFeed && (
                         <TableCell>
                           <Checkbox
                             checked={circuit.isSpliced === 1}

@@ -17,7 +17,9 @@ export const storage = {
     const newCable: Cable = {
       id: nanoid(),
       ribbonSize: mode === 'fiber' ? 12 : 25, // 12 fibers per ribbon for fiber, 25 pairs per binder for copper
-      ...cable
+      ...cable,
+      parentCableId: cable.parentCableId ?? null,
+      spliceName: cable.spliceName ?? null,
     };
     await getDb(mode).cables.add(newCable);
     return newCable;
@@ -28,9 +30,15 @@ export const storage = {
   },
 
   async deleteCable(id: string, mode: 'fiber' | 'copper' = 'fiber'): Promise<void> {
-    // Delete associated circuits first
-    await getDb(mode).circuits.where('cableId').equals(id).delete();
-    await getDb(mode).cables.delete(id);
+    const db = getDb(mode);
+    // Recursively delete child cables (sub-splices) first
+    const children = await db.cables.filter(c => c.parentCableId === id).toArray();
+    for (const child of children) {
+      await storage.deleteCable(child.id, mode);
+    }
+    // Delete associated circuits then the cable itself
+    await db.circuits.where('cableId').equals(id).delete();
+    await db.cables.delete(id);
   },
 
   // Circuit operations

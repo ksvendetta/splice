@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Scan } from "lucide-react";
+import { Cable as CableIcon, Scan } from "lucide-react";
 import { OcrDialog } from "./OcrDialog";
 import { normalizeCircuitId } from "@/lib/circuitIdUtils";
 
@@ -32,23 +32,30 @@ interface CableFormProps {
   isLoading?: boolean;
   mode?: "fiber" | "copper";
   existingCables?: Cable[];
+  splicedFromCable?: Cable; // When set, this is a sub-splice from a distribution cable
 }
 
-function getNextCableName(type: "Feed" | "Distribution", existingCables: Cable[]): string {
+function getNextCableName(type: "Feed" | "Distribution", existingCables: Cable[], parentCableId?: string): string {
+  if (parentCableId) {
+    // Sub-splice context: use "f" prefix, count only existing siblings
+    const siblings = existingCables.filter(c => c.parentCableId === parentCableId);
+    return `f${siblings.length + 1}`;
+  }
   const prefix = type === "Feed" ? "f" : "d";
   const count = existingCables.filter(c => c.type === type).length;
   return `${prefix}${count + 1}`;
 }
 
-export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber", existingCables = [] }: CableFormProps) {
+export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber", existingCables = [], splicedFromCable }: CableFormProps) {
   const [ocrDialogOpen, setOcrDialogOpen] = useState(false);
   const userEditedName = useRef(false);
 
   const hasFeedCable = existingCables.some(c => c.type === "Feed");
+  // Sub-splices are always Distribution; otherwise use the standard default logic
   const defaultType = cable
     ? (cable.type as "Feed" | "Distribution")
-    : (hasFeedCable ? "Distribution" : "Feed");
-  const defaultName = cable ? cable.name : getNextCableName(defaultType, existingCables);
+    : (splicedFromCable ? "Distribution" : (hasFeedCable ? "Distribution" : "Feed"));
+  const defaultName = cable ? cable.name : getNextCableName(defaultType, existingCables, splicedFromCable?.id);
 
   const form = useForm<InsertCable>({
     resolver: zodResolver(insertCableSchema),
@@ -84,30 +91,40 @@ export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber"
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
-        <FormField
-          control={form.control}
-          name="type"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Cable Type</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                <FormControl>
-                  <SelectTrigger data-testid="select-cable-type">
-                    <SelectValue placeholder="Select cable type" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {cableTypes.map((type) => (
-                    <SelectItem key={type} value={type} data-testid={`option-cable-type-${type}`}>
-                      {type}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+
+        {splicedFromCable && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-sm text-blue-700 dark:text-blue-300">
+            <CableIcon className="h-4 w-4 shrink-0" />
+            <span>Splicing from: <strong>{splicedFromCable.name}</strong></span>
+          </div>
+        )}
+
+        {!splicedFromCable && (
+          <FormField
+            control={form.control}
+            name="type"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Cable Type</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger data-testid="select-cable-type">
+                      <SelectValue placeholder="Select cable type" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {cableTypes.map((type) => (
+                      <SelectItem key={type} value={type} data-testid={`option-cable-type-${type}`}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <FormField
           control={form.control}
