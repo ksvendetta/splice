@@ -435,7 +435,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
     <div className="min-h-screen bg-background">
       <TutorialCursor x={cursorPos.x} y={cursorPos.y} visible={cursorPos.visible} clicking={cursorPos.clicking} />
       <header className="border-b">
-        <div className="mx-auto px-2 py-4">
+        <div className="mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-semibold">Fiber Splice Manager</h1>
@@ -534,7 +534,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
         </div>
       </header>
 
-      <main className="mx-auto px-2 py-6">
+      <main className="mx-auto px-4 py-6">
 
         {/* Splice Tree — always visible above tabs */}
         {cables.length > 0 && (
