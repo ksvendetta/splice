@@ -51,7 +51,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, ChevronDown } from "lucide-react";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import {
   Table,
   TableBody,
@@ -81,6 +82,10 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveFileName, setSaveFileName] = useState("");
   const [useRibbonView, setUseRibbonView] = useState(true);
+  const [spliceTreeOpen, setSpliceTreeOpen] = useState(() => {
+    const stored = localStorage.getItem(`spliceTreeOpen-${mode}`);
+    return stored === null ? true : stored === "true";
+  });
 
   // Splice naming state
   const [mainSpliceName, setMainSpliceName] = useState<string>(() => {
@@ -430,7 +435,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
     <div className="min-h-screen bg-background">
       <TutorialCursor x={cursorPos.x} y={cursorPos.y} visible={cursorPos.visible} clicking={cursorPos.clicking} />
       <header className="border-b">
-        <div className="container mx-auto px-6 py-4">
+        <div className="mx-auto px-2 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-semibold">Fiber Splice Manager</h1>
@@ -529,122 +534,129 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-6">
+      <main className="mx-auto px-2 py-6">
 
         {/* Splice Tree — always visible above tabs */}
         {cables.length > 0 && (
           <HelpTip text="Visual diagram of the cable hierarchy. Feed cables connect to distribution cables. Click a node to navigate to that splice." enabled={helpMode} side="bottom">
-            <div className="mb-6 border rounded-lg p-4 bg-muted/30">
-              <h3 className="text-base font-bold text-foreground mb-3 border-b pb-2">Splice Tree</h3>
-              <SpliceTree
-              cables={cables}
-              circuits={allCircuits}
-              selectedCableId={
-                selectedCable?.type === "Feed"
-                  ? selectedCableId
-                  : contextCableId === null
-                    ? (cables.find(c => c.type === "Feed")?.id ?? null)
-                    : null
-              }
-              contextCableId={contextCableId}
-              mainSpliceName={mainSpliceName}
-              onNodeClick={handleTreeNodeClick}
-              onAddSplice={(cable) => {
-                // Open naming dialog before entering sub-splice context
-                setPendingSpliceContextCable(cable);
-                setSpliceNamingInput(cable.spliceName ?? "");
-                setSpliceNamingContext("sub");
-                setSpliceNamingDialogOpen(true);
+            <Collapsible
+              open={spliceTreeOpen}
+              onOpenChange={(open) => {
+                setSpliceTreeOpen(open);
+                localStorage.setItem(`spliceTreeOpen-${mode}`, String(open));
               }}
-              />
-            </div>
+              className="mb-6 border rounded-lg p-4 bg-muted/30"
+            >
+              <CollapsibleTrigger className="flex items-center gap-1 w-full text-left text-base font-bold text-foreground mb-1 border-b pb-2 hover:text-primary transition-colors">
+                <ChevronDown className={`h-4 w-4 transition-transform ${spliceTreeOpen ? '' : '-rotate-90'}`} />
+                Splice Tree
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <SpliceTree
+                  cables={cables}
+                  circuits={allCircuits}
+                  selectedCableId={
+                    selectedCable?.type === "Feed"
+                      ? selectedCableId
+                      : contextCableId === null
+                        ? (cables.find(c => c.type === "Feed")?.id ?? null)
+                        : null
+                  }
+                  contextCableId={contextCableId}
+                  mainSpliceName={mainSpliceName}
+                  onNodeClick={handleTreeNodeClick}
+                  onAddSplice={(cable) => {
+                    setPendingSpliceContextCable(cable);
+                    setSpliceNamingInput(cable.spliceName ?? "");
+                    setSpliceNamingContext("sub");
+                    setSpliceNamingDialogOpen(true);
+                  }}
+                />
+              </CollapsibleContent>
+            </Collapsible>
           </HelpTip>
         )}
 
-        {/* Centered splice name title — always shown when cables exist */}
-        {cables.length > 0 && (
-          <div className="mb-4 flex flex-col items-center gap-1">
-            {/* Main splice name — editable */}
-            {contextCableId === null ? (
-              <div className="flex items-center gap-1">
-                {editingMainSpliceName ? (
-                  <>
-                    <Input
-                      value={tempMainSpliceName}
-                      onChange={e => setTempMainSpliceName(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === "Enter") {
-                          const name = tempMainSpliceName.trim() || "Main Splice";
-                          localStorage.setItem(`spliceName-${mode}`, name);
-                          setMainSpliceName(name);
-                          setEditingMainSpliceName(false);
-                        }
-                        if (e.key === "Escape") setEditingMainSpliceName(false);
-                      }}
-                      className="h-7 w-48 text-center text-base font-semibold"
-                      autoFocus
-                    />
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
-                      onClick={() => {
-                        const name = tempMainSpliceName.trim() || "Main Splice";
-                        localStorage.setItem(`spliceName-${mode}`, name);
-                        setMainSpliceName(name);
-                        setEditingMainSpliceName(false);
-                      }}>
-                      <Check className="h-3 w-3" />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
-                      onClick={() => setEditingMainSpliceName(false)}>
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          {/* Splice navigation panel — bordered like Splice Tree */}
+          <div className="mb-6 border rounded-lg p-4 bg-muted/30">
+            {/* Splice name title — styled like Splice Tree header */}
+            {cables.length > 0 && (
+              <div className="w-full mb-1 border-b pb-2">
+                {contextCableId === null ? (
+                  <div className="flex items-center gap-1">
+                    {editingMainSpliceName ? (
+                      <>
+                        <Input
+                          value={tempMainSpliceName}
+                          onChange={e => setTempMainSpliceName(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") {
+                              const name = tempMainSpliceName.trim() || "Main Splice";
+                              localStorage.setItem(`spliceName-${mode}`, name);
+                              setMainSpliceName(name);
+                              setEditingMainSpliceName(false);
+                            }
+                            if (e.key === "Escape") setEditingMainSpliceName(false);
+                          }}
+                          className="h-7 w-48 text-base font-bold"
+                          autoFocus
+                        />
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                          onClick={() => {
+                            const name = tempMainSpliceName.trim() || "Main Splice";
+                            localStorage.setItem(`spliceName-${mode}`, name);
+                            setMainSpliceName(name);
+                            setEditingMainSpliceName(false);
+                          }}>
+                          <Check className="h-3 w-3" />
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                          onClick={() => setEditingMainSpliceName(false)}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </>
+                    ) : (
+                      <HelpTip text="The name of this splice. Click to rename it." enabled={helpMode} side="bottom">
+                        <button
+                          className="flex items-center gap-1.5 text-base font-bold text-foreground hover:text-primary transition-colors group"
+                          onClick={() => {
+                            setTempMainSpliceName(mainSpliceName);
+                            setEditingMainSpliceName(true);
+                          }}
+                        >
+                          {(mainSpliceName || "Main") + " Splice"}
+                          <Edit2 className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+                        </button>
+                      </HelpTip>
+                    )}
+                  </div>
                 ) : (
-                  <HelpTip text="The name of this splice. Click to rename it." enabled={helpMode} side="bottom">
-                    <button
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-muted shadow-sm text-sm font-semibold text-foreground hover:bg-accent hover:text-primary transition-colors group"
-                      onClick={() => {
-                        setTempMainSpliceName(mainSpliceName);
-                        setEditingMainSpliceName(true);
-                      }}
-                    >
-                      <Edit2 className="h-3 w-3 opacity-0" />
-                      {(mainSpliceName || "Main") + " Splice"}
-                      <Edit2 className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
-                    </button>
-                  </HelpTip>
+                  <div className="flex items-center gap-1">
+                    {(() => {
+                      const contextCable = cables.find(c => c.id === contextCableId);
+                      const currentName = contextCable?.spliceName ?? contextCable?.name ?? "Splice";
+                      return (
+                        <button
+                          className="flex items-center gap-1.5 text-base font-bold text-foreground hover:text-primary transition-colors group"
+                          onClick={() => {
+                            if (!contextCable) return;
+                            setPendingSpliceContextCable(contextCable);
+                            setSpliceNamingInput(contextCable.spliceName ?? "");
+                            setSpliceNamingContext("sub");
+                            setSpliceNamingDialogOpen(true);
+                          }}
+                        >
+                          {currentName + " Splice"}
+                          <Edit2 className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+                        </button>
+                      );
+                    })()}
+                  </div>
                 )}
               </div>
-            ) : (
-              /* Sub-splice context: current splice name only */
-              <div className="flex items-center gap-1">
-                {(() => {
-                  const contextCable = cables.find(c => c.id === contextCableId);
-                  const currentName = contextCable?.spliceName ?? contextCable?.name ?? "Splice";
-                  return (
-                    <button
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-muted shadow-sm text-sm font-semibold text-foreground hover:bg-accent hover:text-primary transition-colors group"
-                      onClick={() => {
-                        if (!contextCable) return;
-                        setPendingSpliceContextCable(contextCable);
-                        setSpliceNamingInput(contextCable.spliceName ?? "");
-                        setSpliceNamingContext("sub");
-                        setSpliceNamingDialogOpen(true);
-                      }}
-                    >
-                      <Edit2 className="h-3 w-3 opacity-0" />
-                      {currentName + " Splice"}
-                      <Edit2 className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
-                    </button>
-                  );
-                })()}
-              </div>
             )}
-          </div>
-        )}
-
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          {/* Tab Navigation with Section Labels */}
-          <div className="mb-6">
+            {/* Tab Navigation */}
             <TabsList data-testid="tabs-main" className="w-full justify-start bg-transparent p-0">
               {/* Cables Section - No Header */}
               <div className="inline-flex flex-col">
@@ -732,8 +744,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
             </TabsList>
           </div>
 
-          <TabsContent value="input" className="space-y-6">
-            <div className="space-y-6">
+          <TabsContent value="input" className="space-y-4">
+            <div className="border rounded-lg p-4 bg-muted/30">
               <div className="flex flex-wrap items-start gap-2">
                 {cablesLoading ? (
                   <div className="text-muted-foreground">Loading cables...</div>
@@ -802,10 +814,11 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                   </Button>
                 </HelpTip>
               </div>
+            </div>
 
               <div>
                 <Card>
-                  <CardHeader className="flex flex-row items-center justify-between gap-4">
+                  <CardHeader className="flex flex-row items-center justify-between gap-4 py-3">
                     <HelpTip text="Details for the selected cable including type, fiber count, and circuit assignments." enabled={helpMode} side="bottom">
                       <CardTitle className="text-base font-bold">
                         {selectedCable ? `Cable: ${displayName(selectedCable)}` : "Select a cable"}
@@ -844,10 +857,10 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                       </div>
                     )}
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="pt-0 pb-3">
                     {selectedCable ? (
-                      <div className="space-y-6">
-                        <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-2 text-sm">
                           <div className="flex items-center gap-2">
                             <span className="text-muted-foreground">Type:</span>
                             {editingType ? (
@@ -982,7 +995,6 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                   </CardContent>
                 </Card>
               </div>
-            </div>
           </TabsContent>
 
           {/* Dynamic TabsContent for each unique circuit ID prefix - sorted by range */}
