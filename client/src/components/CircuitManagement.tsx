@@ -20,14 +20,16 @@ import {
 } from "@/components/ui/table";
 import { OcrDialog } from "./OcrDialog";
 import { normalizeCircuitId } from "@/lib/circuitIdUtils";
+import { HelpTip } from "@/components/HelpTip";
 
 interface CircuitManagementProps {
   cable: Cable;
   mode?: "fiber" | "copper";
   isContextFeed?: boolean;
+  helpMode?: boolean;
 }
 
-export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false }: CircuitManagementProps) {
+export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false, helpMode = false }: CircuitManagementProps) {
   const { toast } = useToast();
   const [circuitId, setCircuitId] = useState("");
   const [editingCircuitId, setEditingCircuitId] = useState<string | null>(null);
@@ -851,17 +853,21 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-4">
         <CardTitle className="text-lg">Circuit Details</CardTitle>
         <div className="flex items-center gap-2">
-          {validationStatus ? (
-            <Badge className="gap-1 bg-green-600 hover:bg-green-700" data-testid="badge-validation-pass">
-              <CheckCircle2 className="h-3 w-3" />
-              Pass
-            </Badge>
-          ) : (
-            <Badge variant="destructive" className="gap-1" data-testid="badge-validation-fail">
-              <XCircle className="h-3 w-3" />
-              Fail
-            </Badge>
-          )}
+          <HelpTip text={`Displays Pass when the total assigned ${mode === "fiber" ? "fiber" : "pair"} count matches the cable size, or Fail when there is a discrepancy.`} enabled={helpMode} side="left">
+            <span className="inline-flex">
+              {validationStatus ? (
+                <Badge className="gap-1 bg-green-600 hover:bg-green-700" data-testid="badge-validation-pass">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Pass
+                </Badge>
+              ) : (
+                <Badge variant="destructive" className="gap-1" data-testid="badge-validation-fail">
+                  <XCircle className="h-3 w-3" />
+                  Fail
+                </Badge>
+              )}
+            </span>
+          </HelpTip>
           <span className="text-sm text-muted-foreground" data-testid="text-cable-size">
             {mode === "fiber" ? "Total Fiber Count" : "Total Pair Count"}: {totalAssignedFibers}/{cable.fiberCount}
           </span>
@@ -883,23 +889,27 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
               className="text-sm"
             />
           </div>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setOcrDialogOpen(true)}
-            title="Extract text from image (OCR)"
-            data-testid="button-open-ocr"
-          >
-            <Scan className="h-4 w-4" />
-          </Button>
-          <Button
-            size="icon"
-            data-testid="button-add-circuit"
-            onClick={handleAddCircuit}
-            disabled={createCircuitMutation.isPending}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+          <HelpTip text="Scan an image to extract circuit IDs using OCR." enabled={helpMode} side="bottom">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setOcrDialogOpen(true)}
+              title="Extract text from image (OCR)"
+              data-testid="button-open-ocr"
+            >
+              <Scan className="h-4 w-4" />
+            </Button>
+          </HelpTip>
+          <HelpTip text="Add the circuit ID entered in the text field to this cable." enabled={helpMode} side="bottom">
+            <Button
+              size="icon"
+              data-testid="button-add-circuit"
+              onClick={handleAddCircuit}
+              disabled={createCircuitMutation.isPending}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </HelpTip>
         </div>
 
         {circuits.length > 0 && (
@@ -929,12 +939,16 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                     <TableRow key={circuit.id} data-testid={`row-circuit-${circuit.id}`}>
                       {cable.type === "Distribution" && !isContextFeed && (
                         <TableCell>
-                          <Checkbox
-                            checked={circuit.isSpliced === 1}
-                            onCheckedChange={(checked) => handleCheckboxChange(circuit, checked as boolean)}
-                            data-testid={`checkbox-spliced-${circuit.id}`}
-                            disabled={isEditing}
-                          />
+                          <HelpTip text="Check to splice this circuit to the feed cable. Matches fibers by position." enabled={helpMode} side="right">
+                            <span className="inline-flex">
+                              <Checkbox
+                                checked={circuit.isSpliced === 1}
+                                onCheckedChange={(checked) => handleCheckboxChange(circuit, checked as boolean)}
+                                data-testid={`checkbox-spliced-${circuit.id}`}
+                                disabled={isEditing}
+                              />
+                            </span>
+                          </HelpTip>
                         </TableCell>
                       )}
                       <TableCell className="font-mono text-sm" data-testid={`text-circuit-id-${circuit.id}`}>
@@ -984,41 +998,49 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                             </>
                           ) : (
                             <>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => handleStartEdit(circuit)}
-                                data-testid={`button-edit-circuit-${circuit.id}`}
-                              >
-                                <Edit2 className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => moveCircuitMutation.mutate({ id: circuit.id, direction: "up" })}
-                                disabled={index === 0 || moveCircuitMutation.isPending}
-                                data-testid={`button-move-up-${circuit.id}`}
-                              >
-                                <ChevronUp className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => moveCircuitMutation.mutate({ id: circuit.id, direction: "down" })}
-                                disabled={index === circuits.length - 1 || moveCircuitMutation.isPending}
-                                data-testid={`button-move-down-${circuit.id}`}
-                              >
-                                <ChevronDown className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                data-testid={`button-delete-circuit-${circuit.id}`}
-                                onClick={() => deleteCircuitMutation.mutate(circuit.id)}
-                                disabled={deleteCircuitMutation.isPending}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              <HelpTip text="Edit this circuit's ID." enabled={helpMode} side="top">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => handleStartEdit(circuit)}
+                                  data-testid={`button-edit-circuit-${circuit.id}`}
+                                >
+                                  <Edit2 className="h-4 w-4" />
+                                </Button>
+                              </HelpTip>
+                              <HelpTip text="Move this circuit up in the list." enabled={helpMode} side="top">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => moveCircuitMutation.mutate({ id: circuit.id, direction: "up" })}
+                                  disabled={index === 0 || moveCircuitMutation.isPending}
+                                  data-testid={`button-move-up-${circuit.id}`}
+                                >
+                                  <ChevronUp className="h-4 w-4" />
+                                </Button>
+                              </HelpTip>
+                              <HelpTip text="Move this circuit down in the list." enabled={helpMode} side="top">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => moveCircuitMutation.mutate({ id: circuit.id, direction: "down" })}
+                                  disabled={index === circuits.length - 1 || moveCircuitMutation.isPending}
+                                  data-testid={`button-move-down-${circuit.id}`}
+                                >
+                                  <ChevronDown className="h-4 w-4" />
+                                </Button>
+                              </HelpTip>
+                              <HelpTip text="Delete this circuit from the cable." enabled={helpMode} side="top">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  data-testid={`button-delete-circuit-${circuit.id}`}
+                                  onClick={() => deleteCircuitMutation.mutate(circuit.id)}
+                                  disabled={deleteCircuitMutation.isPending}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </HelpTip>
                             </>
                           )}
                         </div>

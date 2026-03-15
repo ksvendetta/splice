@@ -226,20 +226,6 @@ export function SpliceTree({
         >
           {total}/{cable.fiberCount}
         </text>
-        {/* ＋ Add Splice — purple dot, distribution only */}
-        {!isFeed && (
-          <g
-            className="cursor-pointer"
-            onClick={e => { e.stopPropagation(); onAddSplice(cable); }}
-          >
-            <circle cx={x + R + 10} cy={y - R - 4} r={7} fill="#8b5cf6" stroke="white" strokeWidth={1.5} />
-            <text
-              x={x + R + 10} y={y - R + 1}
-              textAnchor="middle" fontSize={12} fill="white" fontWeight="bold"
-              className="select-none pointer-events-none"
-            >+</text>
-          </g>
-        )}
       </g>
     );
   };

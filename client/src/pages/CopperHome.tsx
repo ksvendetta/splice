@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Cable, Circuit, InsertCable, parseCircuitIdParts } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -26,7 +26,10 @@ import { CableForm } from "@/components/CableForm";
 import { CableVisualization } from "@/components/CableVisualization";
 import { CircuitManagement } from "@/components/CircuitManagement";
 import { SpliceTree } from "@/components/SpliceTree";
-import { Plus, Cable as CableIcon, Workflow, Save, Upload, RotateCcw, Edit2, Check, X, Trash2, Layers, Home as HomeIcon, Phone, Sparkles, ChevronLeft } from "lucide-react";
+import { Plus, Cable as CableIcon, Workflow, Save, Upload, RotateCcw, Edit2, Check, X, Trash2, Layers, Home as HomeIcon, Phone, Sparkles, ChevronLeft, HelpCircle, Play } from "lucide-react";
+import { HelpTip } from "@/components/HelpTip";
+import { TutorialCursor } from "@/components/TutorialCursor";
+import { runCopperTutorial, type CursorPos } from "@/lib/tutorialRunner";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Switch as ToggleSwitch } from "@/components/ui/switch";
@@ -45,6 +48,11 @@ import {
 
 export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"; setMode: (mode: "fiber" | "copper") => void }) {
   const { toast } = useToast();
+  const [helpMode, setHelpMode] = useState(false);
+  const [tutorialRunning, setTutorialRunning] = useState(false);
+  const [tutorialDialogOpen, setTutorialDialogOpen] = useState(false);
+  const tutorialAbortRef = useRef<AbortController | null>(null);
+  const [cursorPos, setCursorPos] = useState<CursorPos>({ x: 0, y: 0, visible: false, clicking: false });
   const [selectedCableId, setSelectedCableId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("input");
   const [contextCableId, setContextCableId] = useState<string | null>(null);
@@ -61,7 +69,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
 
   // Splice naming state
   const [mainSpliceName, setMainSpliceName] = useState<string>(() => {
-    return localStorage.getItem(`spliceName-${mode}`) ?? "";
+    return localStorage.getItem(`spliceName-${mode}`) ?? "Main";
   });
   const [spliceNamingDialogOpen, setSpliceNamingDialogOpen] = useState(false);
   const [spliceNamingInput, setSpliceNamingInput] = useState("");
@@ -105,6 +113,13 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
     }
   };
 
+  // Listen for floating stop button click during tutorial
+  useEffect(() => {
+    const handler = () => tutorialAbortRef.current?.abort();
+    window.addEventListener("tutorial-stop", handler);
+    return () => window.removeEventListener("tutorial-stop", handler);
+  }, []);
+
   // Safety: if the context cable is deleted, reset to root
   useEffect(() => {
     if (contextCableId !== null && !cables.find(c => c.id === contextCableId)) {
@@ -116,18 +131,9 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
 
   // Sync mainSpliceName when mode changes
   useEffect(() => {
-    const stored = localStorage.getItem(`spliceName-${mode}`) ?? "";
+    const stored = localStorage.getItem(`spliceName-${mode}`) ?? "Main";
     setMainSpliceName(stored);
   }, [mode]);
-
-  // Show fresh-start naming dialog when there are no cables and no name yet
-  useEffect(() => {
-    if (!cablesLoading && cables.length === 0 && !mainSpliceName) {
-      setSpliceNamingContext("main");
-      setSpliceNamingInput("");
-      setSpliceNamingDialogOpen(true);
-    }
-  }, [cablesLoading, cables.length, mainSpliceName]);
 
   // Filter cables by the current splice context
   const contextCables = useMemo(() => {
@@ -389,6 +395,10 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
 
   const selectedCable = cables.find((c) => c.id === selectedCableId);
 
+  // In a sub-splice context, the distribution cable acting as feed is displayed as "f1"
+  const displayName = (cable: Cable) =>
+    contextCableId !== null && cable.id === contextCableId ? "f1" : cable.name;
+
   // 25-pair copper cable color codes (tip/ring combinations with actual color values)
   const pairColors = [
     { pair: 1, tip: "white", ring: "blue", tipColor: "#f1f5f9", ringColor: "#3b82f6", textColor: "#ffffff" },
@@ -604,19 +614,37 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                     binderRows.push(
                       <TableRow key={`${circuit.id}-segment-${currentDistPair}`} className={rowBgColor} data-testid={`row-binder-${circuit.id}-${currentDistPair}`}>
                         <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{feedCable.name}-{feedCable.fiberCount}</TableCell>
+                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
                         <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">
                           <span className="inline-block px-2 py-0.5 rounded border-2 border-black font-mono font-semibold text-xs" style={makeGradient(feedBinderColor)}>
                             B{currentFeedBinder}
                           </span>
-                          :{feedPairPosStart}{feedPairPosStart !== feedPairPosEnd ? `-${feedPairPosEnd}` : ''}
+                          :
+                          <span className="inline-block px-1.5 py-0.5 rounded border-2 border-black font-mono font-semibold text-xs ml-0.5" style={makeGradient(getColorForPair(feedPairPosStart))}>
+                            {feedPairPosStart}
+                          </span>
+                          {feedPairPosStart !== feedPairPosEnd && <>
+                            -
+                            <span className="inline-block px-1.5 py-0.5 rounded border-2 border-black font-mono font-semibold text-xs" style={makeGradient(getColorForPair(feedPairPosEnd))}>
+                              {feedPairPosEnd}
+                            </span>
+                          </>}
                         </TableCell>
                         <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">{circuitPrefix},{circuitStart}-{circuitEnd}</TableCell>
                         <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">
                           <span className="inline-block px-2 py-0.5 rounded border-2 border-black font-mono font-semibold text-xs" style={makeGradient(distBinderColor)}>
                             B{currentDistBinder}
                           </span>
-                          :{distPairPosStart}{distPairPosStart !== distPairPosEnd ? `-${distPairPosEnd}` : ''}
+                          :
+                          <span className="inline-block px-1.5 py-0.5 rounded border-2 border-black font-mono font-semibold text-xs ml-0.5" style={makeGradient(getColorForPair(distPairPosStart))}>
+                            {distPairPosStart}
+                          </span>
+                          {distPairPosStart !== distPairPosEnd && <>
+                            -
+                            <span className="inline-block px-1.5 py-0.5 rounded border-2 border-black font-mono font-semibold text-xs" style={makeGradient(getColorForPair(distPairPosEnd))}>
+                              {distPairPosEnd}
+                            </span>
+                          </>}
                         </TableCell>
                         <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
                       </TableRow>
@@ -662,7 +690,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                     pairRows.push(
                       <TableRow key={`${circuit.id}-pair-${i}`} className={rowBgColor} data-testid={`row-pair-${circuit.id}-${i}`}>
                         <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{feedCable.name}-{feedCable.fiberCount}</TableCell>
+                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
                         <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">
                           <span className="inline-block px-2 py-0.5 rounded border-2 border-black font-mono font-semibold text-xs" style={makeGradient(feedBinderColor)}>
                             B{feedBinder}
@@ -701,59 +729,102 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
 
   return (
     <div className="min-h-screen bg-background">
+      <TutorialCursor x={cursorPos.x} y={cursorPos.y} visible={cursorPos.visible} clicking={cursorPos.clicking} />
       <header className="border-b">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-semibold">Copper Splice Manager</h1>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <Phone className={mode === "copper" ? "h-4 w-4 text-primary" : "h-4 w-4 text-muted-foreground"} />
-                <Label htmlFor="mode-toggle" className="cursor-pointer text-sm font-medium">
-                  Copper
-                </Label>
+            <HelpTip text="Switch between fiber optic and copper cable splicing modes." enabled={helpMode} side="bottom">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Phone className={mode === "copper" ? "h-4 w-4 text-primary" : "h-4 w-4 text-muted-foreground"} />
+                  <Label htmlFor="mode-toggle" className="cursor-pointer text-sm font-medium">
+                    Copper
+                  </Label>
+                </div>
+                <ToggleSwitch
+                  id="mode-toggle"
+                  checked={mode === "fiber"}
+                  onCheckedChange={(checked) => setMode(checked ? "fiber" : "copper")}
+                />
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="mode-toggle" className="cursor-pointer text-sm font-medium">
+                    Fiber
+                  </Label>
+                  <Sparkles className={mode === "fiber" ? "h-4 w-4 text-primary" : "h-4 w-4 text-muted-foreground"} />
+                </div>
               </div>
-              <ToggleSwitch
-                id="mode-toggle"
-                checked={mode === "fiber"}
-                onCheckedChange={(checked) => setMode(checked ? "fiber" : "copper")}
-              />
-              <div className="flex items-center gap-2">
-                <Label htmlFor="mode-toggle" className="cursor-pointer text-sm font-medium">
-                  Fiber
-                </Label>
-                <Sparkles className={mode === "fiber" ? "h-4 w-4 text-primary" : "h-4 w-4 text-muted-foreground"} />
-              </div>
-            </div>
+            </HelpTip>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleLoad}
-                data-testid="button-load"
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                Load
-              </Button>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleSaveClick}
-                data-testid="button-save"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                Save
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setResetDialogOpen(true)}
-                data-testid="button-reset"
-              >
-                <RotateCcw className="h-4 w-4 mr-2" />
-                Reset
-              </Button>
+              <HelpTip text="Run an interactive tutorial that demonstrates how to use the app step by step with copper cables." enabled={helpMode || !tutorialRunning} side="bottom">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (tutorialRunning) {
+                      tutorialAbortRef.current?.abort();
+                      return;
+                    }
+                    setTutorialDialogOpen(true);
+                  }}
+                  className={tutorialRunning ? "animate-pulse" : ""}
+                >
+                  <Play className="h-4 w-4 mr-1" />
+                  {tutorialRunning ? "Stop" : "Tutorial"}
+                </Button>
+              </HelpTip>
+              <HelpTip text={helpMode ? "Help mode is ON. Hover over any component to see what it does. Click to turn off." : "Turn on Help mode to see descriptions of each component when you hover over them."} enabled={true} side="bottom">
+                <button
+                  id="help-toggle"
+                  role="switch"
+                  aria-checked={helpMode}
+                  onClick={() => setHelpMode(!helpMode)}
+                  className={`relative inline-flex h-7 w-16 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${helpMode ? "bg-primary" : "bg-input"}`}
+                >
+                  <span className={`pointer-events-none absolute inset-0 flex items-center text-[10px] font-semibold transition-opacity ${helpMode ? "justify-start pl-2 text-primary-foreground opacity-100" : "opacity-0"}`}>
+                    Help
+                  </span>
+                  <span className={`pointer-events-none absolute inset-0 flex items-center text-[10px] font-semibold transition-opacity ${!helpMode ? "justify-end pr-1.5 text-muted-foreground opacity-100" : "opacity-0"}`}>
+                    Help
+                  </span>
+                  <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${helpMode ? "translate-x-9" : "translate-x-0.5"}`} />
+                </button>
+              </HelpTip>
+              <HelpTip text="Load a previously saved splice project from a JSON file." enabled={helpMode} side="bottom">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLoad}
+                  data-testid="button-load"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Load
+                </Button>
+              </HelpTip>
+              <HelpTip text="Save your current splice project to a JSON file for later use." enabled={helpMode} side="bottom">
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleSaveClick}
+                  data-testid="button-save"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Save
+                </Button>
+              </HelpTip>
+              <HelpTip text="Clear all cables and circuits to start fresh." enabled={helpMode} side="bottom">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setResetDialogOpen(true)}
+                  data-testid="button-reset"
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Reset
+                </Button>
+              </HelpTip>
             </div>
           </div>
         </div>
@@ -763,23 +834,32 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
 
         {/* Splice Tree — always visible above tabs */}
         {cables.length > 0 && (
-          <div className="mb-6">
-            <SpliceTree
-              cables={cables}
-              circuits={allCircuits}
-              selectedCableId={selectedCableId}
-              contextCableId={contextCableId}
-              mainSpliceName={mainSpliceName}
-              onNodeClick={handleTreeNodeClick}
-              onAddSplice={(cable) => {
-                // Open naming dialog before entering sub-splice context
-                setPendingSpliceContextCable(cable);
-                setSpliceNamingInput(cable.spliceName ?? cable.name);
-                setSpliceNamingContext("sub");
-                setSpliceNamingDialogOpen(true);
-              }}
-            />
-          </div>
+          <HelpTip text="Visual diagram of the cable hierarchy. Feed cables connect to distribution cables. Click a node to navigate to that splice." enabled={helpMode} side="bottom">
+            <div className="mb-6 border rounded-lg p-4 bg-muted/30">
+              <h3 className="text-base font-bold text-foreground mb-3 border-b pb-2">Splice Tree</h3>
+              <SpliceTree
+                cables={cables}
+                circuits={allCircuits}
+                selectedCableId={
+                  selectedCable?.type === "Feed"
+                    ? selectedCableId
+                    : contextCableId === null
+                      ? (cables.find(c => c.type === "Feed")?.id ?? null)
+                      : null
+                }
+                contextCableId={contextCableId}
+                mainSpliceName={mainSpliceName}
+                onNodeClick={handleTreeNodeClick}
+                onAddSplice={(cable) => {
+                  // Open naming dialog before entering sub-splice context
+                  setPendingSpliceContextCable(cable);
+                  setSpliceNamingInput(cable.spliceName ?? "");
+                  setSpliceNamingContext("sub");
+                  setSpliceNamingDialogOpen(true);
+                }}
+              />
+            </div>
+          </HelpTip>
         )}
 
         {/* Centered splice name title — always shown when cables exist */}
@@ -820,46 +900,30 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                     </Button>
                   </>
                 ) : (
-                  <button
-                    className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-border bg-muted shadow-sm text-sm font-semibold text-foreground hover:bg-accent hover:text-primary transition-colors group"
-                    onClick={() => {
-                      setTempMainSpliceName(mainSpliceName);
-                      setEditingMainSpliceName(true);
-                    }}
-                  >
-                    {mainSpliceName || "Main Splice"}
-                    <Edit2 className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
-                  </button>
+                  <HelpTip text="The name of this splice. Click to rename it." enabled={helpMode} side="bottom">
+                    <button
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-muted shadow-sm text-sm font-semibold text-foreground hover:bg-accent hover:text-primary transition-colors group"
+                      onClick={() => {
+                        setTempMainSpliceName(mainSpliceName);
+                        setEditingMainSpliceName(true);
+                      }}
+                    >
+                      <Edit2 className="h-3 w-3 opacity-0" />
+                      {(mainSpliceName || "Main") + " Splice"}
+                      <Edit2 className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+                    </button>
+                  </HelpTip>
                 )}
               </div>
             ) : (
-              /* Sub-splice context: back button + current splice name only */
+              /* Sub-splice context: current splice name only */
               <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2"
-                  onClick={() => {
-                    const contextCable = cables.find(c => c.id === contextCableId);
-                    const parentId = contextCable?.parentCableId ?? null;
-                    const parentCable = parentId ? cables.find(c => c.id === parentId) : null;
-                    if (parentCable && parentCable.type === "Distribution") {
-                      setContextCableId(parentId);
-                    } else {
-                      setContextCableId(null);
-                    }
-                    setSelectedCableId(null);
-                    setActiveTab("input");
-                  }}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
                 {(() => {
                   const contextCable = cables.find(c => c.id === contextCableId);
                   const currentName = contextCable?.spliceName ?? contextCable?.name ?? "Splice";
                   return (
                     <button
-                      className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-border bg-muted shadow-sm text-sm font-semibold text-foreground hover:bg-accent hover:text-primary transition-colors group"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-muted shadow-sm text-sm font-semibold text-foreground hover:bg-accent hover:text-primary transition-colors group"
                       onClick={() => {
                         if (!contextCable) return;
                         setPendingSpliceContextCable(contextCable);
@@ -868,7 +932,8 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                         setSpliceNamingDialogOpen(true);
                       }}
                     >
-                      {currentName}
+                      <Edit2 className="h-3 w-3 opacity-0" />
+                      {currentName + " Splice"}
                       <Edit2 className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
                     </button>
                   );
@@ -885,10 +950,12 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
               {/* Cables Section - No Header */}
               <div className="inline-flex flex-col">
                 <div className="h-6 mb-2"></div>
-                <TabsTrigger value="input" data-testid="tab-input-data">
-                  <CableIcon className="h-4 w-4 mr-2" />
-                  Cables
-                </TabsTrigger>
+                <HelpTip text="View and manage all cables in this splice. Add feed and distribution cables here." enabled={helpMode} side="bottom">
+                  <TabsTrigger value="input" data-testid="tab-input-data">
+                    <CableIcon className="h-4 w-4 mr-2" />
+                    Cables
+                  </TabsTrigger>
+                </HelpTip>
               </div>
 
               {/* ID Splice Section with Header */}
@@ -905,25 +972,27 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                 return (
                   <>
                     <div className="h-8 w-0.5 bg-border mx-3 self-end" />
-                    <div className="inline-flex flex-col">
-                      <div className="text-center border-x-2 border-border bg-muted/30 px-6 py-1 rounded-t mb-2">
-                        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">
-                          Splice by ID
-                        </h3>
+                    <HelpTip text="View splice details grouped by circuit ID prefix. Each tab shows circuits sharing the same prefix." enabled={helpMode} side="bottom">
+                      <div className="inline-flex flex-col">
+                        <div className="text-center border-x-2 border-border bg-muted/30 px-6 py-1 rounded-t mb-2">
+                          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">
+                            Splice by ID
+                          </h3>
+                        </div>
+                        <div className="inline-flex">
+                          {prefixArray.map(prefix => (
+                            <TabsTrigger
+                              key={`prefix-${prefix}`}
+                              value={`prefix-splice-${prefix}`}
+                              data-testid={`tab-prefix-splice-${prefix}`}
+                            >
+                              <Layers className="h-4 w-4 mr-2" />
+                              {prefix}
+                            </TabsTrigger>
+                          ))}
+                        </div>
                       </div>
-                      <div className="inline-flex">
-                        {prefixArray.map(prefix => (
-                          <TabsTrigger
-                            key={`prefix-${prefix}`}
-                            value={`prefix-splice-${prefix}`}
-                            data-testid={`tab-prefix-splice-${prefix}`}
-                          >
-                            <Layers className="h-4 w-4 mr-2" />
-                            {prefix}
-                          </TabsTrigger>
-                        ))}
-                      </div>
-                    </div>
+                    </HelpTip>
                   </>
                 );
               })()}
@@ -932,12 +1001,13 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
               {(distributionCables.length > 0 || feedCables.length > 0) && (
                 <>
                   <div className="h-8 w-0.5 bg-border mx-3 self-end" />
-                  <div className="inline-flex flex-col">
-                    <div className="text-center border-x-2 border-border bg-muted/30 px-6 py-1 rounded-t mb-2">
-                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">
-                        Splice by Cable
-                      </h3>
-                    </div>
+                  <HelpTip text="View splice details organized by cable. Each tab shows the splice mapping for a specific distribution cable." enabled={helpMode} side="bottom">
+                    <div className="inline-flex flex-col">
+                      <div className="text-center border-x-2 border-border bg-muted/30 px-6 py-1 rounded-t mb-2">
+                        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">
+                          Splice by Cable
+                        </h3>
+                      </div>
                     <div className="inline-flex">
                       {distributionCables.map((distCable) => {
                           const parentCable = distCable.parentCableId
@@ -951,24 +1021,22 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                             >
                               <CableIcon className="h-4 w-4 mr-2" />
                               {distCable.name}
-                              {parentCable && (
-                                <span className="ml-1 text-xs opacity-60">↑{parentCable.name}</span>
-                              )}
                             </TabsTrigger>
                           );
                         })}
-                      {feedCables.map((feedCable) => (
+                      {feedCables.filter(() => contextCableId === null).map((feedCable) => (
                         <TabsTrigger
                           key={`feed-${feedCable.id}`}
                           value={`feed-splice-${feedCable.id}`}
                           data-testid={`tab-feed-splice-${feedCable.id}`}
                         >
                           <CableIcon className="h-4 w-4 mr-2" />
-                          {feedCable.name}
+                          {displayName(feedCable)}
                         </TabsTrigger>
                       ))}
                     </div>
                   </div>
+                  </HelpTip>
                 </>
               )}
             </TabsList>
@@ -995,84 +1063,94 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                     return (
                       <div key={cable.id} className="flex flex-col gap-0.5">
                         <Button
-                          variant={selectedCableId === cable.id ? "default" : "outline"}
+                          variant="outline"
                           size="sm"
                           onClick={() => handleCableSelect(cable.id)}
-                          className={`flex items-center gap-2 ${selectedCableId !== cable.id ? typeColorClass : ''}`}
+                          className={`flex items-center gap-2 ${typeColorClass} ${selectedCableId === cable.id ? 'ring-2 ring-blue-500 ring-offset-1' : ''}`}
                           data-testid={`button-cable-${cable.id}`}
                         >
                           <CableIcon className="h-4 w-4" />
-                          <span>{cable.name}</span>
+                          <span>{displayName(cable)}</span>
                           <span className="text-xs opacity-70">({cable.fiberCount})</span>
                           <span className={`ml-1 text-xs px-1.5 py-0.5 rounded ${isValid ? 'bg-green-500/20 text-green-600 dark:text-green-400' : 'bg-red-500/20 text-red-600 dark:text-red-400'}`}>
                             {isValid ? 'Pass' : 'Fail'}
                           </span>
                         </Button>
                         {cable.type === "Distribution" && cable.id !== contextCableId && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-dashed text-xs h-7"
-                            data-testid={`button-add-splice-${cable.id}`}
-                            onClick={() => {
-                              setPendingSpliceContextCable(cable);
-                              setSpliceNamingInput(cable.spliceName ?? cable.name);
-                              setSpliceNamingContext("sub");
-                              setSpliceNamingDialogOpen(true);
-                            }}
-                          >
-                            <Plus className="h-3 w-3 mr-1" />
-                            Add Splice
-                          </Button>
+                          <HelpTip text="Create a sub-splice from this distribution cable. The cable becomes the feed in the new splice." enabled={helpMode} side="bottom">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-dashed text-xs h-7"
+                              data-testid={`button-add-splice-${cable.id}`}
+                              onClick={() => {
+                                setPendingSpliceContextCable(cable);
+                                setSpliceNamingInput(cable.spliceName ?? "");
+                                setSpliceNamingContext("sub");
+                                setSpliceNamingDialogOpen(true);
+                              }}
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Add Splice
+                            </Button>
+                          </HelpTip>
                         )}
                       </div>
                     );
                   })
                 )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => { setEditingCable(null); setCableDialogOpen(true); }}
-                  data-testid="button-add-cable"
-                  className="border-dashed"
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add Cable
-                </Button>
+                <HelpTip text="Add a new feed or distribution cable to this splice." enabled={helpMode} side="bottom">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setEditingCable(null); setCableDialogOpen(true); }}
+                    data-testid="button-add-cable"
+                    className="border-dashed"
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Cable
+                  </Button>
+                </HelpTip>
               </div>
 
               <div>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between gap-4">
-                    <CardTitle>
-                      {selectedCable ? `Cable: ${selectedCable.name}` : "Select a cable"}
-                    </CardTitle>
+                    <HelpTip text="Details for the selected cable including type, pair count, and circuit assignments." enabled={helpMode} side="bottom">
+                      <CardTitle className="text-base font-bold">
+                        {selectedCable ? `Cable: ${displayName(selectedCable)}` : "Select a cable"}
+                      </CardTitle>
+                    </HelpTip>
                     {selectedCable && (
                       <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setEditingCable(selectedCable);
-                            setCableDialogOpen(true);
-                          }}
-                          data-testid="button-edit-cable"
-                        >
-                          <Edit2 className="h-4 w-4 mr-1" />
-                          Edit
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => {
-                            deleteCableMutation.mutate(selectedCable.id);
-                            setSelectedCableId(null);
-                          }}
-                          data-testid="button-delete-cable"
-                        >
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Delete
-                        </Button>
+                        <HelpTip text="Edit this cable's name, type, pair count, and other details." enabled={helpMode} side="bottom">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setEditingCable(selectedCable);
+                              setCableDialogOpen(true);
+                            }}
+                            data-testid="button-edit-cable"
+                          >
+                            <Edit2 className="h-4 w-4 mr-1" />
+                            Edit
+                          </Button>
+                        </HelpTip>
+                        <HelpTip text="Permanently remove this cable and all its circuits." enabled={helpMode} side="bottom">
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => {
+                              deleteCableMutation.mutate(selectedCable.id);
+                              setSelectedCableId(null);
+                            }}
+                            data-testid="button-delete-cable"
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Delete
+                          </Button>
+                        </HelpTip>
                       </div>
                     )}
                   </CardHeader>
@@ -1204,7 +1282,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                           </div>
                         </div>
 
-                        <CircuitManagement cable={selectedCable} mode={mode} isContextFeed={contextCableId !== null && selectedCable?.id === contextCableId} />
+                        <CircuitManagement cable={selectedCable} mode={mode} isContextFeed={contextCableId !== null && selectedCable?.id === contextCableId} helpMode={helpMode} />
                       </div>
                     ) : (
                       <div className="text-center py-12 text-muted-foreground">
@@ -1278,10 +1356,10 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
               <TabsContent key={distCable.id} value={`splice-${distCable.id}`}>
                 <Card>
                   <CardHeader>
-                    <CardTitle>
+                    <CardTitle className="text-base font-bold">
                       Splice Mapping - {distCable.name}
                       {parentCable && (
-                        <span className="ml-2 text-sm font-normal text-muted-foreground">(sub-splice from {parentCable.name})</span>
+                        <span className="ml-2 text-sm font-normal text-muted-foreground">(sub-splice from {displayName(parentCable)})</span>
                       )}
                     </CardTitle>
                   </CardHeader>
@@ -1293,7 +1371,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                         No circuits marked as spliced yet for {distCable.name}. Select this cable in the Cables tab and mark circuits as spliced.
                       </div>
                     ) : (
-                      renderSpliceTable(cableSplicedCircuits, `dist-${distCable.id}`, parentCable ? `Source (${parentCable.name})` : "Feed")
+                      renderSpliceTable(cableSplicedCircuits, `dist-${distCable.id}`, parentCable ? `Source (${displayName(parentCable)})` : "Feed")
                     )}
                   </CardContent>
                 </Card>
@@ -1315,14 +1393,14 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
               <TabsContent key={`feed-${feedCable.id}`} value={`feed-splice-${feedCable.id}`}>
                 <Card>
                   <CardHeader>
-                    <CardTitle>Splice Mapping - {feedCable.name}</CardTitle>
+                    <CardTitle className="text-base font-bold">Splice Mapping - {displayName(feedCable)}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     {circuitsLoading ? (
                       <div className="text-center py-12 text-muted-foreground">Loading circuits...</div>
                     ) : feedSplicedCircuits.length === 0 ? (
                       <div className="text-center py-12 text-muted-foreground" data-testid={`text-no-feed-spliced-circuits-${feedCable.id}`}>
-                        No Distribution circuits spliced to {feedCable.name} yet. Check circuits in Distribution cables.
+                        No Distribution circuits spliced to {displayName(feedCable)} yet. Check circuits in Distribution cables.
                       </div>
                     ) : (
                       renderSpliceTable(feedSplicedCircuits, `feed-${feedCable.id}`)
@@ -1369,26 +1447,37 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
       {/* Splice Naming Dialog */}
       <Dialog open={spliceNamingDialogOpen} onOpenChange={(open) => {
         if (!open) {
+          // If dismissing the main-splice dialog, still enter context for sub, or set a default name for main
+          if (spliceNamingContext === "main") {
+            const name = spliceNamingInput.trim() || "Main Splice";
+            localStorage.setItem(`spliceName-${mode}`, name);
+            setMainSpliceName(name);
+          } else if (spliceNamingContext === "sub" && pendingSpliceContextCable) {
+            // Enter context without renaming
+            setContextCableId(pendingSpliceContextCable.id);
+            setSelectedCableId(null);
+            setActiveTab("input");
+            setPendingSpliceContextCable(null);
+          }
           setSpliceNamingDialogOpen(false);
-          setPendingSpliceContextCable(null);
         }
       }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {spliceNamingContext === "main" ? "Name This Splice" : "Name This Sub-Splice"}
+              {spliceNamingContext === "main" ? "Name Your Splice" : "Name This Splice"}
             </DialogTitle>
             <DialogDescription>
               {spliceNamingContext === "main"
-                ? "Give your splice a name to identify it"
-                : `Name the sub-splice branching from ${pendingSpliceContextCable?.name ?? "this cable"}`}
+                ? "Give this splice project a name. You can change it later by clicking the name."
+                : `Enter a name for the splice on ${pendingSpliceContextCable?.name ?? "this cable"}. It will appear as the node label in the splice tree.`}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="py-4">
             <Input
+              placeholder="e.g., Print 2.4"
               value={spliceNamingInput}
               onChange={e => setSpliceNamingInput(e.target.value)}
-              placeholder={spliceNamingContext === "main" ? "e.g., Main Street Splice" : "e.g., Branch A"}
               onKeyDown={e => {
                 if (e.key === "Enter") {
                   if (spliceNamingContext === "main") {
@@ -1398,14 +1487,12 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                     setSpliceNamingDialogOpen(false);
                   } else if (pendingSpliceContextCable) {
                     const name = spliceNamingInput.trim();
-                    if (name) {
-                      updateCableSpliceNameMutation.mutate({ id: pendingSpliceContextCable.id, spliceName: name });
-                    }
+                    if (name) updateCableSpliceNameMutation.mutate({ id: pendingSpliceContextCable.id, spliceName: name });
                     setContextCableId(pendingSpliceContextCable.id);
                     setSelectedCableId(null);
                     setActiveTab("input");
-                    setSpliceNamingDialogOpen(false);
                     setPendingSpliceContextCable(null);
+                    setSpliceNamingDialogOpen(false);
                   }
                 }
               }}
@@ -1413,12 +1500,20 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
             />
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => {
-              setSpliceNamingDialogOpen(false);
-              setPendingSpliceContextCable(null);
-            }}>
-              Cancel
-            </Button>
+            {spliceNamingContext === "sub" && (
+              <Button variant="outline" onClick={() => {
+                // Skip naming — just enter context
+                if (pendingSpliceContextCable) {
+                  setContextCableId(pendingSpliceContextCable.id);
+                  setSelectedCableId(null);
+                  setActiveTab("input");
+                  setPendingSpliceContextCable(null);
+                }
+                setSpliceNamingDialogOpen(false);
+              }}>
+                Skip
+              </Button>
+            )}
             <Button onClick={() => {
               if (spliceNamingContext === "main") {
                 const name = spliceNamingInput.trim() || "Main Splice";
@@ -1427,17 +1522,15 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                 setSpliceNamingDialogOpen(false);
               } else if (pendingSpliceContextCable) {
                 const name = spliceNamingInput.trim();
-                if (name) {
-                  updateCableSpliceNameMutation.mutate({ id: pendingSpliceContextCable.id, spliceName: name });
-                }
+                if (name) updateCableSpliceNameMutation.mutate({ id: pendingSpliceContextCable.id, spliceName: name });
                 setContextCableId(pendingSpliceContextCable.id);
                 setSelectedCableId(null);
                 setActiveTab("input");
-                setSpliceNamingDialogOpen(false);
                 setPendingSpliceContextCable(null);
+                setSpliceNamingDialogOpen(false);
               }
             }}>
-              {spliceNamingContext === "main" ? "Save Name" : "Enter Sub-Splice"}
+              {spliceNamingContext === "main" ? "Set Name" : "Name & Enter"}
             </Button>
           </div>
         </DialogContent>
@@ -1461,6 +1554,50 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Reset All Data
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={tutorialDialogOpen} onOpenChange={setTutorialDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Start Tutorial</AlertDialogTitle>
+            <AlertDialogDescription>
+              Running the tutorial will reset all current cables and circuits. Any unsaved data will be lost.
+              Do you want to proceed?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                setTutorialDialogOpen(false);
+                const abortController = new AbortController();
+                tutorialAbortRef.current = abortController;
+                setTutorialRunning(true);
+                try {
+                  await runCopperTutorial({
+                    setCursorPos,
+                    showToast: (title, description) => toast({ title, description }),
+                    mode,
+                    signal: abortController.signal,
+                  });
+                } catch (err: any) {
+                  if (err?.name === "AbortError" || abortController.signal.aborted) {
+                    setCursorPos({ x: 0, y: 0, visible: false, clicking: false });
+                    toast({ title: "Tutorial stopped" });
+                  } else {
+                    console.error("Tutorial error:", err);
+                    toast({ title: "Tutorial error", variant: "destructive" });
+                  }
+                } finally {
+                  setTutorialRunning(false);
+                  tutorialAbortRef.current = null;
+                }
+              }}
+            >
+              Start Tutorial
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
