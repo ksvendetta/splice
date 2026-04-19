@@ -1263,9 +1263,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                             <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
                                             <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
                                             <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">
-                                              <span className="inline-flex items-center gap-0.5">
-                                                <span className={`inline-block px-1.5 py-0.5 rounded border font-mono font-semibold text-xs ${feedRibbonColor.colorClass}`} style={{ borderColor: 'currentColor' }}>R{currentFeedRibbon}</span>
-                                                <span>:</span>
+                                              <span className="inline-flex items-center gap-2">
+                                                <span className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedRibbonColor.bg} ${feedRibbonColor.text} font-mono font-semibold text-xs`}>R{currentFeedRibbon}</span><span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
                                                 <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(feedStrandStart).bg} ${getColorForStrand(feedStrandStart).text} font-mono font-semibold text-xs`}>{feedStrandStart}</span>
                                                 {feedStrandStart !== feedStrandEnd && <>
                                                   <span>-</span>
@@ -1275,9 +1274,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                             </TableCell>
                                             <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">{circuitPrefix},{circuitStart}-{circuitEnd}</TableCell>
                                             <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">
-                                              <span className="inline-flex items-center gap-0.5">
-                                                <span className={`inline-block px-1.5 py-0.5 rounded border font-mono font-semibold text-xs ${distRibbonColor.colorClass}`} style={{ borderColor: 'currentColor' }}>R{currentDistRibbon}</span>
-                                                <span>:</span>
+                                              <span className="inline-flex items-center gap-2">
+                                                <span className={`inline-block px-1.5 py-0.5 rounded border border-black ${distRibbonColor.bg} ${distRibbonColor.text} font-mono font-semibold text-xs`}>R{currentDistRibbon}</span><span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
                                                 <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(distStrandStart).bg} ${getColorForStrand(distStrandStart).text} font-mono font-semibold text-xs`}>{distStrandStart}</span>
                                                 {distStrandStart !== distStrandEnd && <>
                                                   <span>-</span>
@@ -1321,7 +1319,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                           <TableRow key={`${circuit.id}-fiber-${i}`} className={rowBgColor}>
                                             <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
                                             <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
-                                            <TableCell className={`text-center font-mono font-semibold py-1 px-2 whitespace-nowrap ${feedRibbonColor.colorClass}`}>R{feedRibbon}</TableCell>
+                                            <TableCell className="text-center py-1 px-2 whitespace-nowrap"><span className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedRibbonColor.bg} ${feedRibbonColor.text} font-mono font-semibold text-xs`}>R{feedRibbon}</span></TableCell>
                                             <TableCell className="text-center py-1 px-2">
                                               <div className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedColor.bg} ${feedColor.text} font-mono font-semibold text-xs`}>
                                                 {feedStrand}
@@ -1333,7 +1331,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                                 {distStrand}
                                               </div>
                                             </TableCell>
-                                            <TableCell className={`text-center font-mono font-semibold py-1 px-2 whitespace-nowrap ${distRibbonColor.colorClass}`}>R{distRibbon}</TableCell>
+                                            <TableCell className="text-center py-1 px-2 whitespace-nowrap"><span className={`inline-block px-1.5 py-0.5 rounded border border-black ${distRibbonColor.bg} ${distRibbonColor.text} font-mono font-semibold text-xs`}>R{distRibbon}</span></TableCell>
                                             <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
                                           </TableRow>
                                         );
@@ -1606,9 +1604,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                         <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
                                         <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
                                         <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">
-                                          <span className="inline-flex items-center gap-0.5">
-                                            <span className={`inline-block px-1.5 py-0.5 rounded border font-mono font-semibold text-xs ${feedRibbonColor.colorClass}`} style={{ borderColor: 'currentColor' }}>R{currentFeedRibbon}</span>
-                                            <span>:</span>
+                                          <span className="inline-flex items-center gap-2">
+                                            <span className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedRibbonColor.bg} ${feedRibbonColor.text} font-mono font-semibold text-xs`}>R{currentFeedRibbon}</span><span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
                                             <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(feedStrandStart).bg} ${getColorForStrand(feedStrandStart).text} font-mono font-semibold text-xs`}>{feedStrandStart}</span>
                                             {feedStrandStart !== feedStrandEnd && <>
                                               <span>-</span>
@@ -1618,9 +1615,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                         </TableCell>
                                         <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">{circuitPrefix},{circuitStart}-{circuitEnd}</TableCell>
                                         <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">
-                                          <span className="inline-flex items-center gap-0.5">
-                                            <span className={`inline-block px-1.5 py-0.5 rounded border font-mono font-semibold text-xs ${distRibbonColor.colorClass}`} style={{ borderColor: 'currentColor' }}>R{currentDistRibbon}</span>
-                                            <span>:</span>
+                                          <span className="inline-flex items-center gap-2">
+                                            <span className={`inline-block px-1.5 py-0.5 rounded border border-black ${distRibbonColor.bg} ${distRibbonColor.text} font-mono font-semibold text-xs`}>R{currentDistRibbon}</span><span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
                                             <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(distStrandStart).bg} ${getColorForStrand(distStrandStart).text} font-mono font-semibold text-xs`}>{distStrandStart}</span>
                                             {distStrandStart !== distStrandEnd && <>
                                               <span>-</span>
@@ -1673,7 +1669,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                       <TableRow key={`${circuit.id}-fiber-${i}`} className={rowBgColor} data-testid={`row-fiber-${circuit.id}-${i}`}>
                                         <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
                                         <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
-                                        <TableCell className={`text-center font-mono font-semibold py-1 px-2 whitespace-nowrap ${feedRibbonColor.colorClass}`}>R{feedRibbon}</TableCell>
+                                        <TableCell className="text-center py-1 px-2 whitespace-nowrap"><span className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedRibbonColor.bg} ${feedRibbonColor.text} font-mono font-semibold text-xs`}>R{feedRibbon}</span></TableCell>
                                         <TableCell className="text-center py-1 px-2">
                                           <div className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedColor.bg} ${feedColor.text} font-mono font-semibold text-xs`}>
                                             {feedStrand}
@@ -1685,7 +1681,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                             {distStrand}
                                           </div>
                                         </TableCell>
-                                        <TableCell className={`text-center font-mono font-semibold py-1 px-2 whitespace-nowrap ${distRibbonColor.colorClass}`}>R{distRibbon}</TableCell>
+                                        <TableCell className="text-center py-1 px-2 whitespace-nowrap"><span className={`inline-block px-1.5 py-0.5 rounded border border-black ${distRibbonColor.bg} ${distRibbonColor.text} font-mono font-semibold text-xs`}>R{distRibbon}</span></TableCell>
                                         <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
                                       </TableRow>
                                     );
@@ -1937,9 +1933,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                         <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
                                         <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
                                         <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">
-                                          <span className="inline-flex items-center gap-0.5">
-                                            <span className={`inline-block px-1.5 py-0.5 rounded border font-mono font-semibold text-xs ${feedRibbonColor.colorClass}`} style={{ borderColor: 'currentColor' }}>R{currentFeedRibbon}</span>
-                                            <span>:</span>
+                                          <span className="inline-flex items-center gap-2">
+                                            <span className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedRibbonColor.bg} ${feedRibbonColor.text} font-mono font-semibold text-xs`}>R{currentFeedRibbon}</span><span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
                                             <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(feedStrandStart).bg} ${getColorForStrand(feedStrandStart).text} font-mono font-semibold text-xs`}>{feedStrandStart}</span>
                                             {feedStrandStart !== feedStrandEnd && <>
                                               <span>-</span>
@@ -1949,9 +1944,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                         </TableCell>
                                         <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">{circuitPrefix},{circuitStart}-{circuitEnd}</TableCell>
                                         <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">
-                                          <span className="inline-flex items-center gap-0.5">
-                                            <span className={`inline-block px-1.5 py-0.5 rounded border font-mono font-semibold text-xs ${distRibbonColor.colorClass}`} style={{ borderColor: 'currentColor' }}>R{currentDistRibbon}</span>
-                                            <span>:</span>
+                                          <span className="inline-flex items-center gap-2">
+                                            <span className={`inline-block px-1.5 py-0.5 rounded border border-black ${distRibbonColor.bg} ${distRibbonColor.text} font-mono font-semibold text-xs`}>R{currentDistRibbon}</span><span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
                                             <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(distStrandStart).bg} ${getColorForStrand(distStrandStart).text} font-mono font-semibold text-xs`}>{distStrandStart}</span>
                                             {distStrandStart !== distStrandEnd && <>
                                               <span>-</span>
@@ -2004,7 +1998,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                       <TableRow key={`${circuit.id}-feed-fiber-${i}`} className={rowBgColor} data-testid={`row-feed-fiber-${circuit.id}-${i}`}>
                                         <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
                                         <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
-                                        <TableCell className={`text-center font-mono font-semibold py-1 px-2 whitespace-nowrap ${feedRibbonColor.colorClass}`}>R{feedRibbon}</TableCell>
+                                        <TableCell className="text-center py-1 px-2 whitespace-nowrap"><span className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedRibbonColor.bg} ${feedRibbonColor.text} font-mono font-semibold text-xs`}>R{feedRibbon}</span></TableCell>
                                         <TableCell className="text-center py-1 px-2">
                                           <div className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedColor.bg} ${feedColor.text} font-mono font-semibold text-xs`}>
                                             {feedStrand}
@@ -2016,7 +2010,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                             {distStrand}
                                           </div>
                                         </TableCell>
-                                        <TableCell className={`text-center font-mono font-semibold py-1 px-2 whitespace-nowrap ${distRibbonColor.colorClass}`}>R{distRibbon}</TableCell>
+                                        <TableCell className="text-center py-1 px-2 whitespace-nowrap"><span className={`inline-block px-1.5 py-0.5 rounded border border-black ${distRibbonColor.bg} ${distRibbonColor.text} font-mono font-semibold text-xs`}>R{distRibbon}</span></TableCell>
                                         <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
                                       </TableRow>
                                     );

@@ -699,19 +699,10 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
         );
       }
 
-      // Fiber mode styling
-      const needsInvertedStyle = (num - 1) % 12 === 5; // Index 5 = white for fiber
-
-      if (needsInvertedStyle) {
-        return (
-          <span className="inline-block px-2 py-0.5 rounded border-2 border-black bg-slate-300 text-white font-mono font-semibold text-xs">
-            {containerLabel}{num}
-          </span>
-        );
-      }
-
+      // Fiber mode styling — filled badge matching strand layout, with brackets for separation
+      const fiberColor = color as { bg: string; text: string };
       return (
-        <span className={`inline-block px-2 py-0.5 rounded border-2 ${color.colorClass} font-mono font-semibold text-xs`} style={{ borderColor: 'currentColor' }}>
+        <span className={`inline-block px-2 py-0.5 rounded border border-black ${fiberColor.bg} ${fiberColor.text} font-mono font-semibold text-xs`}>
           {containerLabel}{num}
         </span>
       );
@@ -748,7 +739,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
       return (
         <span className="flex items-center gap-1">
           <ColoredRibbon num={startRibbon} />
-          <span>:</span>
+          <span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
           <ColoredStrand num={startStrand} />
           <span>-</span>
           <ColoredStrand num={endStrand} />
@@ -792,7 +783,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
         parts.push(
           <span key={`start-${startRibbon}`} className="flex items-center gap-1">
             <ColoredRibbon num={startRibbon} />
-            <span>:</span>
+            <span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
             <ColoredStrand num={startStrand} />
             <span>-</span>
             <ColoredStrand num={ribbonSize} />
@@ -810,7 +801,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
           parts.push(
             <span key={`full-${r}`} className="flex items-center gap-1">
               <ColoredRibbon num={r} />
-              <span>:</span>
+              <span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
               <ColoredStrand num={1} />
               <span>-</span>
               <ColoredStrand num={ribbonSize} />
@@ -824,7 +815,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
         parts.push(
           <span key={`end-${endRibbon}`} className="flex items-center gap-1">
             <ColoredRibbon num={endRibbon} />
-            <span>:</span>
+            <span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
             <ColoredStrand num={1} />
             <span>-</span>
             <ColoredStrand num={endStrand} />
