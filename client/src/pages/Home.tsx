@@ -431,6 +431,41 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
   const displayName = (cable: Cable) =>
     contextCableId !== null && cable.id === contextCableId ? "f1" : cable.name;
 
+  const getCircuitRangeStart = (circuitId: string): number => {
+    try {
+      return parseCircuitIdParts(circuitId).rangeStart;
+    } catch {
+      const rangeStart = circuitId.split(',')[1]?.trim().split('-')[0];
+      return parseInt(rangeStart ?? "", 10) || Number.MAX_SAFE_INTEGER;
+    }
+  };
+
+  const compareByCircuitIdCount = (a: Circuit, b: Circuit) => {
+    const aParts = a.circuitId.split(',');
+    const bParts = b.circuitId.split(',');
+    const aPrefix = aParts[0]?.trim() ?? "";
+    const bPrefix = bParts[0]?.trim() ?? "";
+
+    if (aPrefix !== bPrefix) return aPrefix.localeCompare(bPrefix);
+    return getCircuitRangeStart(a.circuitId) - getCircuitRangeStart(b.circuitId);
+  };
+
+  const compareByDistributionRibbon = (a: Circuit, b: Circuit) => {
+    const fiberCompare = (a.fiberStart || Number.MAX_SAFE_INTEGER) - (b.fiberStart || Number.MAX_SAFE_INTEGER);
+    if (fiberCompare !== 0) return fiberCompare;
+
+    const circuitCompare = compareByCircuitIdCount(a, b);
+    if (circuitCompare !== 0) return circuitCompare;
+
+    return (a.position ?? 0) - (b.position ?? 0);
+  };
+
+  const getPrefixDistributionStart = (prefix: string, groupedByPrefix: Record<string, Circuit[]>) => {
+    return Math.min(
+      ...groupedByPrefix[prefix].map(circuit => circuit.fiberStart || Number.MAX_SAFE_INTEGER)
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <TutorialCursor x={cursorPos.x} y={cursorPos.y} visible={cursorPos.visible} clicking={cursorPos.clicking} />
@@ -677,7 +712,21 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                   const prefix = parts[0]?.trim();
                   if (prefix) uniquePrefixes.add(prefix);
                 });
-                const prefixArray = Array.from(uniquePrefixes).sort();
+                const groupedByPrefix: Record<string, Circuit[]> = {};
+                splicedCircuits.forEach(circuit => {
+                  const parts = circuit.circuitId.split(',');
+                  const prefix = parts[0]?.trim();
+                  if (!prefix) return;
+                  if (!groupedByPrefix[prefix]) groupedByPrefix[prefix] = [];
+                  groupedByPrefix[prefix].push(circuit);
+                });
+                const prefixArray = Array.from(uniquePrefixes).sort((a, b) => {
+                  const distributionCompare = getPrefixDistributionStart(a, groupedByPrefix) - getPrefixDistributionStart(b, groupedByPrefix);
+                  if (distributionCompare !== 0) return distributionCompare;
+                  const circuitCompare = getCircuitRangeStart(groupedByPrefix[a][0]?.circuitId ?? "") - getCircuitRangeStart(groupedByPrefix[b][0]?.circuitId ?? "");
+                  if (circuitCompare !== 0) return circuitCompare;
+                  return a.localeCompare(b);
+                });
                 if (prefixArray.length === 0) return null;
 
                 return (
@@ -1010,7 +1059,13 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
               groupedByPrefix[prefix].push(circuit);
             });
             
-            const prefixes = Object.keys(groupedByPrefix).sort();
+            const prefixes = Object.keys(groupedByPrefix).sort((a, b) => {
+              const distributionCompare = getPrefixDistributionStart(a, groupedByPrefix) - getPrefixDistributionStart(b, groupedByPrefix);
+              if (distributionCompare !== 0) return distributionCompare;
+              const circuitCompare = getCircuitRangeStart(groupedByPrefix[a][0]?.circuitId ?? "") - getCircuitRangeStart(groupedByPrefix[b][0]?.circuitId ?? "");
+              if (circuitCompare !== 0) return circuitCompare;
+              return a.localeCompare(b);
+            });
             
             // Fiber optic color codes (12 colors, repeating pattern)
             const fiberColors = [
@@ -1034,20 +1089,9 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
             const getColorForStrand = (strand: number) => fiberColors[(strand - 1) % 12];
             const getColorForRibbon = (ribbon: number) => fiberColors[(ribbon - 1) % 12];
             
-            // Helper to extract range start from circuit ID
-            const getRangeStart = (circuitId: string): number => {
-              const parts = circuitId.split(',');
-              if (parts.length < 2) return 0;
-              const rangePart = parts[1]?.trim() || '';
-              const rangeParts = rangePart.split('-');
-              return parseInt(rangeParts[0]?.trim() || '0') || 0;
-            };
-            
             return prefixes.map(prefix => {
               // Sort circuits by their range start number
-              const prefixCircuits = [...groupedByPrefix[prefix]].sort((a, b) => {
-                return getRangeStart(a.circuitId) - getRangeStart(b.circuitId);
-              });
+              const prefixCircuits = [...groupedByPrefix[prefix]].sort(compareByCircuitIdCount);
 
               // Calculate total rows by actually counting them
               let totalSpliceRows = 0;
@@ -1356,16 +1400,9 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
             const parentCable = distCable.parentCableId
               ? cables.find(c => c.id === distCable.parentCableId)
               : null;
-            const cableSplicedCircuits = splicedCircuits.filter(c => c.cableId === distCable.id).sort((a, b) => {
-              try {
-                const partsA = parseCircuitIdParts(a.circuitId);
-                const partsB = parseCircuitIdParts(b.circuitId);
-                if (partsA.prefix !== partsB.prefix) return partsA.prefix.localeCompare(partsB.prefix);
-                return partsA.rangeStart - partsB.rangeStart;
-              } catch {
-                return a.circuitId.localeCompare(b.circuitId);
-              }
-            });
+            const cableSplicedCircuits = splicedCircuits
+              .filter(c => c.cableId === distCable.id)
+              .sort(compareByDistributionRibbon);
             
             // Calculate total rows by matching the rendering logic exactly
             let totalSpliceRows = 0;
