@@ -26,6 +26,9 @@ import { CableForm } from "@/components/CableForm";
 import { CableVisualization } from "@/components/CableVisualization";
 import { CircuitManagement } from "@/components/CircuitManagement";
 import { SpliceTree } from "@/components/SpliceTree";
+import { CropDialog } from "@/components/CameraCaptureDialog";
+import { UndoButton } from "@/components/UndoButton";
+import { HistoryButton } from "@/components/HistoryButton";
 import { Plus, Cable as CableIcon, Workflow, Save, Upload, RotateCcw, Edit2, Check, X, Trash2, Layers, Home as HomeIcon, Phone, Sparkles, ChevronLeft, ChevronDown, HelpCircle, Play } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { HelpTip } from "@/components/HelpTip";
@@ -82,6 +85,41 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
   const [pendingSpliceContextCable, setPendingSpliceContextCable] = useState<Cable | null>(null);
   const [editingMainSpliceName, setEditingMainSpliceName] = useState(false);
   const [tempMainSpliceName, setTempMainSpliceName] = useState("");
+
+  // Camera capture state — lives at page level so it survives dialog close/reopen
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const cameraActiveRef = useRef(false);
+  const [cameraRawImage, setCameraRawImage] = useState<string>("");
+  const [cropDialogOpen, setCropDialogOpen] = useState(false);
+  const [cameraOcrImage, setCameraOcrImage] = useState<string>("");
+
+  const handleCameraFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      cameraActiveRef.current = false;
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setTimeout(() => {
+        setCameraRawImage(reader.result as string);
+        setCropDialogOpen(true);
+        setCableDialogOpen(true);
+        cameraActiveRef.current = false;
+      }, 200);
+    };
+    reader.onerror = () => {
+      cameraActiveRef.current = false;
+    };
+    reader.readAsDataURL(file);
+    setTimeout(() => { if (e.target) e.target.value = ""; }, 500);
+  };
+
+  const handleTakePicture = () => {
+    cameraActiveRef.current = true;
+    cameraInputRef.current?.click();
+  };
 
   // Use mode-specific API endpoints to keep fiber and copper data separate
   const apiMode = mode === "fiber" ? "fiber" : "copper";
@@ -472,8 +510,8 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
         }, 0);
 
     return (
-      <div className="rounded-md border overflow-x-auto inline-block">
-        <Table className="text-sm w-auto">
+      <div className="w-full max-w-full overflow-x-auto rounded-md border">
+        <Table className="min-w-max text-sm">
           <TableHeader>
             <TableRow className="bg-muted/50">
               <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle">#</TableHead>
@@ -819,6 +857,22 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                   Save
                 </Button>
               </HelpTip>
+              <UndoButton
+                mode={mode}
+                helpMode={helpMode}
+                onUndo={() => {
+                  setMainSpliceName(localStorage.getItem(`spliceName-${mode}`) ?? "Main");
+                  setSelectedCableId(null);
+                }}
+              />
+              <HistoryButton
+                mode={mode}
+                helpMode={helpMode}
+                onRestore={() => {
+                  setMainSpliceName(localStorage.getItem(`spliceName-${mode}`) ?? "Main");
+                  setSelectedCableId(null);
+                }}
+              />
               <HelpTip text="Clear all cables and circuits to start fresh." enabled={helpMode} side="bottom">
                 <Button
                   variant="destructive"
@@ -1426,12 +1480,18 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
       </main>
 
       <Dialog open={cableDialogOpen} onOpenChange={(open) => {
+        if (!open && cameraActiveRef.current) return;
         setCableDialogOpen(open);
         if (!open) {
           setEditingCable(null);
         }
       }}>
-        <DialogContent data-testid="dialog-cable-form">
+        <DialogContent
+          data-testid="dialog-cable-form"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onFocusOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => { if (cameraActiveRef.current) e.preventDefault(); }}
+        >
           <DialogHeader>
             <DialogTitle>
               {editingCable ? "Edit Cable" : "Add New Cable"}
@@ -1452,9 +1512,39 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
             isLoading={createCableMutation.isPending || updateCableMutation.isPending}
             mode={mode}
             existingCables={cables}
+            onTakePicture={handleTakePicture}
+            cameraOcrImage={cameraOcrImage}
+            onCameraOcrImageUsed={() => setCameraOcrImage("")}
           />
         </DialogContent>
       </Dialog>
+
+      {/* Camera file input — lives at page level so it survives dialog lifecycle */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleCameraFileChange}
+        className="hidden"
+      />
+
+      <CropDialog
+        open={cropDialogOpen}
+        onOpenChange={setCropDialogOpen}
+        imageSrc={cameraRawImage}
+        onImageCropped={(croppedImage) => {
+          setCameraOcrImage(croppedImage);
+          setCropDialogOpen(false);
+          setCameraRawImage("");
+          setCableDialogOpen(true);
+        }}
+        onRetake={() => {
+          setCropDialogOpen(false);
+          setCameraRawImage("");
+          setTimeout(() => cameraInputRef.current?.click(), 100);
+        }}
+      />
 
       {/* Splice Naming Dialog */}
       <Dialog open={spliceNamingDialogOpen} onOpenChange={(open) => {
@@ -1553,8 +1643,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
           <AlertDialogHeader>
             <AlertDialogTitle>Reset All Data</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete all cables and circuits without saving.
-              This action cannot be undone.
+              This will clear all cables and circuits without saving. You can use Undo afterward to restore the previous project state.
               Are you sure you want to continue?
             </AlertDialogDescription>
           </AlertDialogHeader>

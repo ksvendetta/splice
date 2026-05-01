@@ -17,6 +17,8 @@ const ROW_H = 80;  // vertical spacing between sibling nodes
 const PAD_X = 44;
 const PAD_Y = 28;
 const R = 9;       // splice node radius
+const NODE_BOX_TOP = R + 9 + 15;
+const NODE_BOX_BOTTOM = R + 14 + 13;
 
 interface LayoutNode {
   cable: Cable;
@@ -103,6 +105,14 @@ export function SpliceTree({
 
     // ── Collect all dist nodes flat ──────────────────────────────────────────
     const distNodes = Array.from(distMap.values());
+    const allNodes = [...feedNodes, ...distNodes];
+    const minBoxTop = Math.min(...allNodes.map(n => n.y - NODE_BOX_TOP));
+    const shiftY = Math.max(0, PAD_Y - minBoxTop);
+    if (shiftY > 0) {
+      for (const node of allNodes) {
+        node.y += shiftY;
+      }
+    }
 
     let maxDepth = 1;
     for (const n of distNodes) if (n.depth > maxDepth) maxDepth = n.depth;
@@ -134,10 +144,8 @@ export function SpliceTree({
     }
 
     const svgW = PAD_X * 2 + (maxDepth + 1) * COL_W;
-    const svgH = Math.max(
-      PAD_Y * 2 + totalDistLeaves * ROW_H,
-      feedStartY + feedSpread + ROW_H,   // ensure last feed label fits
-    );
+    const maxBoxBottom = Math.max(...allNodes.map(n => n.y + NODE_BOX_BOTTOM));
+    const svgH = Math.max(PAD_Y * 2 + totalDistLeaves * ROW_H + shiftY, maxBoxBottom + PAD_Y);
 
     return { feedNodes, distNodes, edges, svgW, svgH };
   }, [cables]);
@@ -168,8 +176,8 @@ export function SpliceTree({
     const fill = pass ? "#22c55e" : "#ef4444";
     const ringColor = pass ? "#16a34a" : "#dc2626";
     // Box bounds that fully enclose label (above) + node + fiber count (below)
-    const boxTop    = y - R - 9 - 15;  // above label text baseline + ascender + padding
-    const boxBottom = y + R + 14 + 13; // below fiber count baseline + descender + padding
+    const boxTop    = y - NODE_BOX_TOP;    // above label text baseline + ascender + padding
+    const boxBottom = y + NODE_BOX_BOTTOM; // below fiber count baseline + descender + padding
     const boxLeft   = x - 40;
     const boxRight  = x + 40;
 

@@ -1,5 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { storage } from "./storage";
+import { createUndoSnapshot, pushUndoSnapshot } from "./undoManager";
 import type { Circuit } from "@shared/schema";
 
 // Extract mode from endpoint (e.g., /api/fiber/cables -> 'fiber', /api/copper/cables -> 'copper')
@@ -70,6 +71,11 @@ export async function apiRequest(
   // Remove /api/ and optional mode prefix (fiber/ or copper/)
   const path = url.replace(/^\/api\//, '').replace(/^(fiber|copper)\//, '');
   const [resource, id, ...rest] = path.split('/');
+  const isProjectSaveLoad = resource === 'saves' && (rest.includes('load') || id === 'load');
+  const shouldTrackUndo = (resource !== 'saves' || isProjectSaveLoad) && ['POST', 'PATCH', 'PUT', 'DELETE'].includes(method);
+  const undoEntry = shouldTrackUndo
+    ? await createUndoSnapshot(mode, getUndoLabel(method, resource, rest))
+    : null;
 
   try {
     let result: any;
@@ -134,27 +140,116 @@ export async function apiRequest(
 
         // Get existing circuits to calculate position and fiber start
         const existingCircuits = await storage.getCircuitsByCableId(circuitData.cableId, mode);
-        const position = existingCircuits.length;
+        const insertAt = typeof circuitData.insertAt === 'number'
+          ? Math.max(0, Math.min(existingCircuits.length, circuitData.insertAt))
+          : existingCircuits.length;
 
-        let fiberStart = 1;
-        if (existingCircuits.length > 0) {
-          const lastCircuit = existingCircuits[existingCircuits.length - 1];
-          fiberStart = lastCircuit.fiberEnd + 1;
-        }
-
-        const fiberEnd = fiberStart + fiberCount - 1;
-
-        // Validate fiber range
-        if (fiberEnd > cable.fiberCount) {
-          throw new Error(`Circuit requires ${fiberCount} fibers but only ${cable.fiberCount - fiberStart + 1} fibers remaining`);
-        }
-
-        result = await storage.createCircuit({
+        const orderedCircuits = [...existingCircuits];
+        orderedCircuits.splice(insertAt, 0, {
           ...circuitData,
-          position,
-          fiberStart,
-          fiberEnd
+          id: "__new__",
+          position: insertAt,
+          fiberStart: 0,
+          fiberEnd: 0,
+          isSpliced: 0,
+          feedCableId: null,
+          feedFiberStart: null,
+          feedFiberEnd: null,
+        } as Circuit);
+
+        let currentFiberStart = 1;
+        let newFiberStart = 1;
+        let newFiberEnd = fiberCount;
+        const repositionUpdates: Array<{ id: string; changes: Partial<Circuit> }> = [];
+
+        for (let i = 0; i < orderedCircuits.length; i++) {
+          const orderedCircuit = orderedCircuits[i];
+          const orderedParts = orderedCircuit.circuitId.split(',');
+          if (orderedParts.length !== 2) throw new Error('Invalid circuit ID format');
+          const orderedRangeParts = orderedParts[1].split('-');
+          if (orderedRangeParts.length !== 2) throw new Error('Invalid range format');
+          const orderedRangeStart = parseInt(orderedRangeParts[0]);
+          const orderedRangeEnd = parseInt(orderedRangeParts[1]);
+          if (isNaN(orderedRangeStart) || isNaN(orderedRangeEnd)) throw new Error('Invalid range values');
+
+          const orderedFiberCount = orderedRangeEnd - orderedRangeStart + 1;
+          const fiberStart = currentFiberStart;
+          const fiberEnd = fiberStart + orderedFiberCount - 1;
+
+          if (orderedCircuit.id === "__new__") {
+            newFiberStart = fiberStart;
+            newFiberEnd = fiberEnd;
+          } else {
+            repositionUpdates.push({
+              id: orderedCircuit.id,
+              changes: { position: i, fiberStart, fiberEnd }
+            });
+          }
+
+          currentFiberStart = fiberEnd + 1;
+        }
+
+        const { insertAt: _insertAt, ...createCircuitData } = circuitData;
+        result = await storage.createCircuit({
+          ...createCircuitData,
+          position: insertAt,
+          fiberStart: newFiberStart,
+          fiberEnd: newFiberEnd
         }, mode);
+
+        if (repositionUpdates.length > 0) {
+          await storage.bulkUpdateCircuits(repositionUpdates, mode);
+        }
+
+        if (cable.type === 'Feed') {
+          const allDistCircuits = await storage.getAllCircuits(mode);
+          const updatedFeedCircuits = await storage.getCircuitsByCableId(circuitData.cableId, mode);
+          const distBulkUpdates: Array<{ id: string; changes: Partial<Circuit> }> = [];
+
+          for (const distCircuit of allDistCircuits) {
+            if (distCircuit.isSpliced === 1 && distCircuit.feedCableId === circuitData.cableId) {
+              const distParts = distCircuit.circuitId.split(',');
+              if (distParts.length !== 2) continue;
+              const distPrefix = distParts[0].trim();
+              const distRangeParts = distParts[1].trim().split('-');
+              if (distRangeParts.length !== 2) continue;
+
+              const distStart = parseInt(distRangeParts[0]);
+              const distEnd = parseInt(distRangeParts[1]);
+              if (isNaN(distStart) || isNaN(distEnd)) continue;
+
+              for (const feedCircuit of updatedFeedCircuits) {
+                const feedParts = feedCircuit.circuitId.split(',');
+                if (feedParts.length !== 2) continue;
+                const feedPrefix = feedParts[0].trim();
+                if (feedPrefix !== distPrefix) continue;
+
+                const feedRangeParts = feedParts[1].trim().split('-');
+                if (feedRangeParts.length !== 2) continue;
+                const feedStart = parseInt(feedRangeParts[0]);
+                const feedEnd = parseInt(feedRangeParts[1]);
+                if (isNaN(feedStart) || isNaN(feedEnd)) continue;
+
+                if (distStart >= feedStart && distEnd <= feedEnd) {
+                  const offsetFromFeedStart = distStart - feedStart;
+                  const offsetFromFeedEnd = distEnd - feedStart;
+                  distBulkUpdates.push({
+                    id: distCircuit.id,
+                    changes: {
+                      feedFiberStart: feedCircuit.fiberStart + offsetFromFeedStart,
+                      feedFiberEnd: feedCircuit.fiberStart + offsetFromFeedEnd,
+                    }
+                  });
+                  break;
+                }
+              }
+            }
+          }
+
+          if (distBulkUpdates.length > 0) {
+            await storage.bulkUpdateCircuits(distBulkUpdates, mode);
+          }
+        }
       } else if (resource === 'saves') {
         if (rest.includes('load')) {
           // Load save
@@ -457,12 +552,34 @@ export async function apiRequest(
       }
     }
     
+    if (undoEntry) {
+      pushUndoSnapshot(mode, undoEntry);
+    }
+
     return {
       json: async () => result
     };
   } catch (error) {
     throw new Error(error instanceof Error ? error.message : 'Storage operation failed');
   }
+}
+
+function getUndoLabel(method: string, resource: string, rest: string[]) {
+  if (resource === 'reset') return 'Reset data';
+  if (resource === 'cables') {
+    if (method === 'POST') return 'Add cable';
+    if (method === 'DELETE') return 'Delete cable';
+    return 'Update cable';
+  }
+  if (resource === 'circuits') {
+    if (method === 'POST') return 'Add circuit';
+    if (method === 'DELETE') return 'Delete circuit';
+    if (rest.includes('toggle-spliced')) return 'Update splice';
+    if (rest.includes('update-circuit-id')) return 'Update circuit ID';
+    if (rest.includes('move')) return 'Move circuit';
+    return 'Update circuit';
+  }
+  return 'Change';
 }
 
 export const queryClient = new QueryClient({

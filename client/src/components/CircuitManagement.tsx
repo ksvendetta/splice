@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { Fragment, useState, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Circuit, Cable, InsertCircuit } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Trash2, CheckCircle2, XCircle, Edit2, Check, X, ChevronUp, ChevronDown, Scan } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Trash2, CheckCircle2, XCircle, Edit2, Check, X, ChevronUp, ChevronDown, Scan, Camera } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
@@ -19,6 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { OcrDialog } from "./OcrDialog";
+import { CropDialog } from "./CameraCaptureDialog";
 import { normalizeCircuitId } from "@/lib/circuitIdUtils";
 import { HelpTip } from "@/components/HelpTip";
 
@@ -34,7 +36,26 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
   const [circuitId, setCircuitId] = useState("");
   const [editingCircuitId, setEditingCircuitId] = useState<string | null>(null);
   const [editingCircuitValue, setEditingCircuitValue] = useState("");
+  const [insertAfterIndex, setInsertAfterIndex] = useState<number | null>(null);
+  const [insertCircuitValue, setInsertCircuitValue] = useState("");
+  const [hoveredCircuitIndex, setHoveredCircuitIndex] = useState<number | null>(null);
+  const [circuitInputFocused, setCircuitInputFocused] = useState(false);
   const [ocrDialogOpen, setOcrDialogOpen] = useState(false);
+  const [cropDialogOpen, setCropDialogOpen] = useState(false);
+  const [cameraImage, setCameraImage] = useState<string>("");
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setCameraImage(reader.result as string);
+      setCropDialogOpen(true);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
 
   const { data: circuits = [], isLoading } = useQuery<Circuit[]>({
     queryKey: [`/api/${mode}/circuits/cable`, cable.id],
@@ -49,7 +70,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
   });
 
   const createCircuitMutation = useMutation({
-    mutationFn: async (data: InsertCircuit) => {
+    mutationFn: async (data: InsertCircuit & { insertAt?: number }) => {
       return await apiRequest("POST", `/api/${mode}/circuits`, data);
     },
     onSuccess: async () => {
@@ -57,6 +78,8 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
       await queryClient.refetchQueries({ queryKey: [`/api/${mode}/circuits/cable`, cable.id] });
       await queryClient.refetchQueries({ queryKey: [`/api/${mode}/circuits`] });
       setCircuitId("");
+      setInsertCircuitValue("");
+      setInsertAfterIndex(null);
       toast({ title: "Circuit added successfully" });
     },
     onError: (error: any) => {
@@ -561,8 +584,13 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
     updateCircuitIdMutation.mutate({ id: circuitId, circuitId: normalizedId });
   };
 
-  const handleAddCircuit = () => {
-    if (!circuitId.trim()) {
+  const handleAddCircuit = async () => {
+    const circuitIdsToAdd = circuitId
+      .split(/\r?\n/)
+      .map(id => id.trim())
+      .filter(Boolean);
+
+    if (circuitIdsToAdd.length === 0) {
       toast({
         title: "Missing circuit ID",
         description: "Please enter a circuit ID (e.g., lg,33-36)",
@@ -571,9 +599,46 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
       return;
     }
 
-    // Normalize the circuit ID (convert spaces to proper separators)
-    const normalizedId = normalizeCircuitId(circuitId.trim());
-    
+    const normalizedCircuitIds: string[] = [];
+    for (const rawCircuitId of circuitIdsToAdd) {
+      const normalizedId = normalizeCircuitId(rawCircuitId);
+      const validation = parseAndCheckCircuitId(normalizedId);
+      if (!validation.valid) {
+        toast({
+          title: "Invalid Circuit ID",
+          description: validation.error,
+          variant: "destructive",
+        });
+        return;
+      }
+      normalizedCircuitIds.push(normalizedId);
+    }
+
+    try {
+      for (const normalizedId of normalizedCircuitIds) {
+        await createCircuitMutation.mutateAsync({
+          cableId: cable.id,
+          circuitId: normalizedId,
+        });
+      }
+    } catch {
+      // Mutation onError displays the toast; stop adding the remaining rows.
+    }
+  };
+
+  const handleInsertCircuit = () => {
+    if (insertAfterIndex === null) return;
+
+    if (!insertCircuitValue.trim()) {
+      toast({
+        title: "Missing circuit ID",
+        description: "Please enter a circuit ID (e.g., lg,33-36)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const normalizedId = normalizeCircuitId(insertCircuitValue.trim());
     const validation = parseAndCheckCircuitId(normalizedId);
     if (!validation.valid) {
       toast({
@@ -587,7 +652,78 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
     createCircuitMutation.mutate({
       cableId: cable.id,
       circuitId: normalizedId,
+      insertAt: insertAfterIndex + 1,
     });
+  };
+
+  const openInsertAt = (insertAt: number) => {
+    setInsertAfterIndex(insertAt - 1);
+    setInsertCircuitValue("");
+  };
+
+  const renderInsertCircuitRow = (insertAt: number, anchorCircuitId: string, position: "before" | "after", columnCount: number, hoverIndex: number) => {
+    const insertIndex = insertAt - 1;
+    const isActive = insertAfterIndex === insertIndex;
+
+    return (
+      <TableRow
+        key={`${anchorCircuitId}-insert-${position}`}
+        className="border-b border-sky-200 bg-sky-50 hover:bg-sky-100 dark:border-sky-900 dark:bg-sky-950/30 dark:hover:bg-sky-950/45"
+        onMouseEnter={() => setHoveredCircuitIndex(hoverIndex)}
+      >
+        <TableCell colSpan={columnCount} className="h-8 p-1">
+          {isActive ? (
+            <div className="flex items-center gap-2">
+              <Input
+                value={insertCircuitValue}
+                onChange={(e) => setInsertCircuitValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleInsertCircuit();
+                  if (e.key === "Escape") {
+                    setInsertAfterIndex(null);
+                    setInsertCircuitValue("");
+                  }
+                }}
+                placeholder="Circuit ID"
+                className="h-8 max-w-xs font-mono text-sm"
+                data-testid={`input-insert-circuit-${position}-${anchorCircuitId}`}
+                autoFocus
+              />
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={handleInsertCircuit}
+                disabled={createCircuitMutation.isPending}
+                data-testid={`button-save-insert-circuit-${position}-${anchorCircuitId}`}
+              >
+                <Check className="h-4 w-4 text-green-600" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => {
+                  setInsertAfterIndex(null);
+                  setInsertCircuitValue("");
+                }}
+                data-testid={`button-cancel-insert-circuit-${position}-${anchorCircuitId}`}
+              >
+                <X className="h-4 w-4 text-red-600" />
+              </Button>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 w-full border border-dashed border-sky-400 bg-white/70 text-sky-700 hover:bg-white hover:text-sky-900 dark:border-sky-700 dark:bg-sky-950/60 dark:text-sky-300 dark:hover:bg-sky-950"
+              onClick={() => openInsertAt(insertAt)}
+              data-testid={`button-insert-circuit-${position}-${anchorCircuitId}`}
+            >
+              Add Fiber Count
+            </Button>
+          )}
+        </TableCell>
+      </TableRow>
+    );
   };
 
   const totalAssignedFibers = useMemo(() => {
@@ -599,6 +735,15 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
   const validationStatus = useMemo(() => {
     return totalAssignedFibers === cable.fiberCount;
   }, [totalAssignedFibers, cable.fiberCount]);
+
+  const fiberDelta = totalAssignedFibers - cable.fiberCount;
+  const unitLabel = mode === "fiber" ? "Strands" : "Pairs";
+  const failureMessage = fiberDelta > 0
+    ? `${fiberDelta} ${unitLabel} Over`
+    : `${Math.abs(fiberDelta)} ${unitLabel} Under`;
+  const circuitInputRows = circuitInputFocused || circuitId.includes("\n")
+    ? Math.max(2, circuitId.split(/\r?\n/).length)
+    : 1;
 
   // Fiber optic color codes (12 colors, repeating pattern)
   const fiberColors = [
@@ -671,6 +816,11 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
       }
       return fiberColors[(num - 1) % 12];
     }
+  };
+
+  const isDeadCircuitId = (circuitId: string) => {
+    const prefix = circuitId.split(',')[0]?.trim() ?? "";
+    return /^[A-Za-z]$/.test(prefix);
   };
 
   const getRibbonAndStrandDisplay = (fiberStart: number, fiberEnd: number, ribbonSize: number) => {
@@ -841,9 +991,19 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
 
   return (
     <Card data-testid="card-circuit-management">
-      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-4">
+      <CardHeader className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 space-y-0 pb-4">
         <CardTitle className="text-lg">Circuit Details</CardTitle>
-        <div className="flex items-center gap-2">
+        {!validationStatus ? (
+          <div
+            className="justify-self-center rounded-md border border-red-300 bg-red-100 px-4 py-1.5 text-base font-bold text-red-700 shadow-sm dark:border-red-800 dark:bg-red-950/50 dark:text-red-300"
+            data-testid="text-fiber-delta"
+          >
+            {failureMessage}
+          </div>
+        ) : (
+          <div />
+        )}
+        <div className="flex items-center justify-end gap-2">
           <HelpTip text={`Displays Pass when the total assigned ${mode === "fiber" ? "fiber" : "pair"} count matches the cable size, or Fail when there is a discrepancy.`} enabled={helpMode} side="left">
             <span className="inline-flex">
               {validationStatus ? (
@@ -868,16 +1028,24 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
         <div className="flex gap-2 items-end">
           <div className="flex-1">
             <Label htmlFor="circuitId" className="text-xs">
-              Circuit ID
+              Bulk Add Circuit ID
             </Label>
-            <Input
+            <Textarea
               id="circuitId"
               data-testid="input-circuit-id"
               value={circuitId}
               onChange={(e) => setCircuitId(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAddCircuit()}
+              onFocus={() => setCircuitInputFocused(true)}
+              onBlur={() => setCircuitInputFocused(false)}
+              onKeyDown={(e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                  e.preventDefault();
+                  handleAddCircuit();
+                }
+              }}
               placeholder="e.g., lg,33-36 or lg 33 36"
-              className="text-sm"
+              rows={circuitInputRows}
+              className="!min-h-9 resize-none overflow-hidden py-2 text-sm"
             />
           </div>
           <HelpTip text="Scan an image to extract circuit IDs using OCR." enabled={helpMode} side="bottom">
@@ -891,16 +1059,51 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
               <Scan className="h-4 w-4" />
             </Button>
           </HelpTip>
-          <HelpTip text="Add the circuit ID entered in the text field to this cable." enabled={helpMode} side="bottom">
+          <HelpTip text="Take a picture with your camera for OCR." enabled={helpMode} side="bottom">
             <Button
+              variant="outline"
               size="icon"
-              data-testid="button-add-circuit"
-              onClick={handleAddCircuit}
-              disabled={createCircuitMutation.isPending}
+              onClick={() => cameraInputRef.current?.click()}
+              title="Take a picture with your camera for OCR"
+              data-testid="button-open-camera-ocr"
             >
-              <Plus className="h-4 w-4" />
+              <Camera className="h-4 w-4" />
             </Button>
           </HelpTip>
+          {circuitInputFocused && (
+            <>
+              <HelpTip text="Add the circuit IDs entered in the text field to this cable." enabled={helpMode} side="bottom">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="text-green-600 hover:bg-green-50 hover:text-green-700 dark:text-green-400 dark:hover:bg-green-950/40"
+                  data-testid="button-add-circuit"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={handleAddCircuit}
+                  disabled={createCircuitMutation.isPending}
+                  title="Add circuit IDs"
+                >
+                  <Check className="h-5 w-5" />
+                </Button>
+              </HelpTip>
+              <HelpTip text="Clear the circuit ID text field." enabled={helpMode} side="bottom">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/40"
+                  data-testid="button-clear-circuit-input"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setCircuitId("");
+                    setCircuitInputFocused(false);
+                  }}
+                  title="Clear circuit IDs"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </HelpTip>
+            </>
+          )}
         </div>
 
         {circuits.length > 0 && (
@@ -917,7 +1120,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                   <TableHead className="w-[15%] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody onMouseLeave={() => setHoveredCircuitIndex(null)}>
                 {circuits.map((circuit, index) => {
                   const ribbonDisplay = getRibbonAndStrandDisplay(
                     circuit.fiberStart,
@@ -925,9 +1128,21 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                     cable.ribbonSize
                   );
                   const isEditing = editingCircuitId === circuit.id;
+                  const isDeadCircuit = isDeadCircuitId(circuit.circuitId);
+                  const columnCount = cable.type === "Distribution" && !isContextFeed ? 5 : 4;
+                  const showHoverInsertRows = hoveredCircuitIndex === index && insertAfterIndex === null;
+                  const showInsertAbove = showHoverInsertRows || (index === 0 && insertAfterIndex === -1);
+                  const showInsertBelow = showHoverInsertRows || insertAfterIndex === index;
                   
                   return (
-                    <TableRow key={circuit.id} data-testid={`row-circuit-${circuit.id}`}>
+                    <Fragment key={`${circuit.id}-with-insert`}>
+                    {showInsertAbove && renderInsertCircuitRow(index, circuit.id, "before", columnCount, index)}
+                    <TableRow
+                      key={circuit.id}
+                      className={isDeadCircuit ? "bg-red-50/80 hover:bg-red-100/80 dark:bg-red-950/20 dark:hover:bg-red-950/30" : undefined}
+                      data-testid={`row-circuit-${circuit.id}`}
+                      onMouseEnter={() => setHoveredCircuitIndex(index)}
+                    >
                       {cable.type === "Distribution" && !isContextFeed && (
                         <TableCell>
                           <HelpTip text="Check to splice this circuit to the feed cable. Matches fibers by position." enabled={helpMode} side="right">
@@ -956,7 +1171,14 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                             autoFocus
                           />
                         ) : (
-                          circuit.circuitId
+                          <span className="inline-flex items-center gap-2">
+                            <span>{circuit.circuitId}</span>
+                            {isDeadCircuit && (
+                              <Badge variant="destructive" className="px-1.5 py-0 text-[10px] leading-4">
+                                Dead
+                              </Badge>
+                            )}
+                          </span>
                         )}
                       </TableCell>
                       <TableCell className="font-mono text-sm" data-testid={`text-fiber-range-${circuit.id}`}>
@@ -1037,6 +1259,8 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                         </div>
                       </TableCell>
                     </TableRow>
+                    {showInsertBelow && renderInsertCircuitRow(index + 1, circuit.id, "after", columnCount, index)}
+                    </Fragment>
                   );
                 })}
               </TableBody>
@@ -1053,10 +1277,40 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
 
       <OcrDialog
         open={ocrDialogOpen}
-        onOpenChange={setOcrDialogOpen}
+        onOpenChange={(isOpen) => {
+          setOcrDialogOpen(isOpen);
+          if (!isOpen) setCameraImage("");
+        }}
+        initialImage={cameraImage}
         onTextExtracted={(text) => {
           // Append extracted text to current circuit ID input
           setCircuitId(prev => prev ? `${prev}\n${text}` : text);
+          setCameraImage("");
+        }}
+      />
+
+      {/* Hidden file input for camera capture — opens native camera on mobile */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleCameraCapture}
+        className="hidden"
+      />
+
+      <CropDialog
+        open={cropDialogOpen}
+        onOpenChange={setCropDialogOpen}
+        imageSrc={cameraImage}
+        onImageCropped={(croppedImage) => {
+          setCameraImage(croppedImage);
+          setCropDialogOpen(false);
+          setOcrDialogOpen(true);
+        }}
+        onRetake={() => {
+          setCropDialogOpen(false);
+          setTimeout(() => cameraInputRef.current?.click(), 100);
         }}
       />
     </Card>

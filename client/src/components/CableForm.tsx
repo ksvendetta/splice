@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Cable as CableIcon, Scan } from "lucide-react";
+import { Cable as CableIcon, Scan, Camera } from "lucide-react";
 import { OcrDialog } from "./OcrDialog";
 import { normalizeCircuitId } from "@/lib/circuitIdUtils";
 
@@ -33,6 +33,9 @@ interface CableFormProps {
   mode?: "fiber" | "copper";
   existingCables?: Cable[];
   splicedFromCable?: Cable; // When set, this is a sub-splice from a distribution cable
+  onTakePicture?: () => void;
+  cameraOcrImage?: string;
+  onCameraOcrImageUsed?: () => void;
 }
 
 function getNextCableName(type: "Feed" | "Distribution", existingCables: Cable[], parentCableId?: string): string {
@@ -46,9 +49,16 @@ function getNextCableName(type: "Feed" | "Distribution", existingCables: Cable[]
   return `${prefix}${count + 1}`;
 }
 
-export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber", existingCables = [], splicedFromCable }: CableFormProps) {
+export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber", existingCables = [], splicedFromCable, onTakePicture, cameraOcrImage, onCameraOcrImageUsed }: CableFormProps) {
   const [ocrDialogOpen, setOcrDialogOpen] = useState(false);
   const userEditedName = useRef(false);
+
+  // When a camera OCR image arrives, open the OCR dialog with it
+  useEffect(() => {
+    if (cameraOcrImage) {
+      setOcrDialogOpen(true);
+    }
+  }, [cameraOcrImage]);
 
   const hasFeedCable = existingCables.some(c => c.type === "Feed");
   // Sub-splices are always Distribution; otherwise use the standard default logic
@@ -176,17 +186,32 @@ export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber"
               <FormItem>
                 <div className="flex items-center justify-between">
                   <FormLabel>Circuit IDs (Optional)</FormLabel>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setOcrDialogOpen(true)}
-                    title="Extract text from image (OCR)"
-                    data-testid="button-open-cable-ocr"
-                  >
-                    <Scan className="h-4 w-4 mr-2" />
-                    Scan Image
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setOcrDialogOpen(true)}
+                      title="Extract text from image (OCR)"
+                      data-testid="button-open-cable-ocr"
+                    >
+                      <Scan className="h-4 w-4 mr-2" />
+                      Scan Image
+                    </Button>
+                    {onTakePicture && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={onTakePicture}
+                        title="Take a picture with your camera for OCR"
+                        data-testid="button-open-camera-ocr"
+                      >
+                        <Camera className="h-4 w-4 mr-2" />
+                        Take Picture
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 <FormControl>
                   <Textarea
@@ -228,7 +253,11 @@ export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber"
 
       <OcrDialog
         open={ocrDialogOpen}
-        onOpenChange={setOcrDialogOpen}
+        onOpenChange={(isOpen) => {
+          setOcrDialogOpen(isOpen);
+          if (!isOpen) onCameraOcrImageUsed?.();
+        }}
+        initialImage={cameraOcrImage}
         onTextExtracted={(text) => {
           // Get current circuit IDs
           const currentValue = form.getValues('circuitIds') || [];
@@ -240,6 +269,7 @@ export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber"
 
           // Update form
           form.setValue('circuitIds', newLines);
+          onCameraOcrImageUsed?.();
         }}
       />
     </Form>

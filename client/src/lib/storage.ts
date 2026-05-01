@@ -136,6 +136,29 @@ export const storage = {
     await db.circuits.bulkAdd(saveData.circuits);
   },
 
+  async getProjectSnapshot(mode: 'fiber' | 'copper' = 'fiber'): Promise<{ cables: Cable[]; circuits: Circuit[] }> {
+    const db = getDb(mode);
+    const [cables, circuits] = await Promise.all([
+      db.cables.toArray(),
+      db.circuits.toArray(),
+    ]);
+    return { cables, circuits };
+  },
+
+  async restoreProjectSnapshot(snapshot: { cables: Cable[]; circuits: Circuit[] }, mode: 'fiber' | 'copper' = 'fiber'): Promise<void> {
+    const db = getDb(mode);
+    await db.transaction('rw', db.cables, db.circuits, async () => {
+      await db.cables.clear();
+      await db.circuits.clear();
+      if (snapshot.cables.length > 0) {
+        await db.cables.bulkAdd(snapshot.cables);
+      }
+      if (snapshot.circuits.length > 0) {
+        await db.circuits.bulkAdd(snapshot.circuits);
+      }
+    });
+  },
+
   async resetAllData(mode: 'fiber' | 'copper' = 'fiber'): Promise<void> {
     const db = getDb(mode);
     await db.cables.clear();

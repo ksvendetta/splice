@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertCableSchema, insertCircuitSchema, insertSpliceSchema, parseCircuitId, circuitIdsOverlap, type Circuit } from "@shared/schema";
 import { z } from "zod";
+import { runGoogleVisionOcr } from "./googleOcr";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/cables", async (_req, res) => {
@@ -59,13 +60,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           const fiberEnd = currentFiberStart + fiberCount - 1;
-          
-          // Validate fiber range doesn't exceed cable capacity
-          if (fiberEnd > validatedData.fiberCount) {
-            return res.status(400).json({ 
-              error: `Circuit "${circuitId}" requires ${fiberCount} fibers but only ${validatedData.fiberCount - currentFiberStart + 1} fibers remaining in cable` 
-            });
-          }
           
           currentFiberStart = fiberEnd + 1;
         }
@@ -219,13 +213,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const fiberEnd = fiberStart + fiberCount - 1;
       
-      // Validate fiber range
-      if (fiberEnd > cable.fiberCount) {
-        return res.status(400).json({ 
-          error: `Circuit requires ${fiberCount} fibers but only ${cable.fiberCount - fiberStart + 1} fibers remaining in cable` 
-        });
-      }
-      
       // Create circuit with auto-calculated values
       const circuitData = {
         ...validatedData,
@@ -361,13 +348,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const circ = allCircuits[i];
         const fiberCount = parseCircuitId(circ.circuitId);
         const fiberEnd = currentFiberStart + fiberCount - 1;
-        
-        // Check if exceeds cable capacity
-        if (fiberEnd > cable.fiberCount) {
-          return res.status(400).json({ 
-            error: `Circuit requires ${fiberCount} fibers but only ${cable.fiberCount - currentFiberStart + 1} fibers remaining in cable` 
-          });
-        }
         
         await storage.updateCircuit(circ.id, {
           fiberStart: currentFiberStart,
@@ -748,6 +728,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(200).json({ message: "All data has been reset successfully" });
     } catch (error) {
       res.status(500).json({ error: "Failed to reset data" });
+    }
+  });
+
+  // ---------- Google Cloud Vision OCR ----------
+  app.post("/api/ocr", async (req, res) => {
+    try {
+      const { image } = req.body; // base64 data-url string
+      if (!image || typeof image !== "string") {
+        return res.status(400).json({ error: "Missing 'image' field (base64 data URL)" });
+      }
+
+      // Strip the data-url prefix if present (e.g. "data:image/png;base64,...")
+      const base64 = image.includes(",") ? image.split(",")[1] : image;
+
+      const result = await runGoogleVisionOcr(base64);
+      res.json(result);
+    } catch (error: any) {
+      console.error("OCR error:", error);
+      res.status(500).json({ error: error.message || "OCR processing failed" });
     }
   });
 

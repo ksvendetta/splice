@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createWorker } from "tesseract.js";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,15 +14,16 @@ import { Camera, Upload, Copy, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cleanOcrText } from "@/lib/circuitIdUtils";
 import { preprocessImageForOCR } from "@/lib/imagePreprocess";
-import { runPaddleOcr } from "@/lib/paddleOcr";
+import { runGoogleOcr } from "@/lib/googleOcr";
 
 interface OcrDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onTextExtracted: (text: string) => void;
+  initialImage?: string;
 }
 
-export function OcrDialog({ open, onOpenChange, onTextExtracted }: OcrDialogProps) {
+export function OcrDialog({ open, onOpenChange, onTextExtracted, initialImage }: OcrDialogProps) {
   const { toast } = useToast();
   const [selectedImage, setSelectedImage] = useState<string>("");
   const [extractedText, setExtractedText] = useState("");
@@ -31,8 +32,16 @@ export function OcrDialog({ open, onOpenChange, onTextExtracted }: OcrDialogProp
   const [copied, setCopied] = useState(false);
   const [processedImage, setProcessedImage] = useState<string>("");
   const [showProcessed, setShowProcessed] = useState(false);
-  const [ocrEngine, setOcrEngine] = useState<"paddle" | "tesseract" | "">("");
+  const [ocrEngine, setOcrEngine] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load initial image from camera capture
+  useEffect(() => {
+    if (initialImage && open) {
+      setSelectedImage(initialImage);
+      setExtractedText("");
+    }
+  }, [initialImage, open]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -109,22 +118,23 @@ export function OcrDialog({ open, onOpenChange, onTextExtracted }: OcrDialogProp
     try {
       setProgress(5);
 
-      // Try PaddleOCR first (more accurate)
+      // Try Google Cloud Vision first (more accurate)
       let rawText: string | null = null;
 
       try {
-        setOcrEngine("paddle");
+        setOcrEngine("server");
         setProgress(10);
-        const paddleResult = await runPaddleOcr(selectedImage);
-        if (paddleResult && paddleResult.text.trim()) {
-          rawText = paddleResult.text;
+        const serverResult = await runGoogleOcr(selectedImage);
+        if (serverResult && serverResult.text.trim()) {
+          rawText = serverResult.text;
+          setOcrEngine(serverResult.engine || "AI Vision");
           setProgress(90);
         }
       } catch (err) {
-        console.warn("PaddleOCR failed, falling back to Tesseract:", err);
+        console.warn("Server OCR failed, falling back to Tesseract:", err);
       }
 
-      // Fall back to Tesseract if PaddleOCR didn't produce results
+      // Fall back to Tesseract if Google Vision didn't produce results
       if (!rawText) {
         rawText = await runTesseractOcr(selectedImage);
       }
@@ -138,7 +148,7 @@ export function OcrDialog({ open, onOpenChange, onTextExtracted }: OcrDialogProp
 
       toast({
         title: "Text extracted successfully",
-        description: `Engine: ${ocrEngine === "paddle" ? "PaddleOCR" : "Tesseract"}`,
+        description: `Engine: ${ocrEngine === "tesseract" ? "Tesseract" : ocrEngine || "AI Vision"}`,
       });
     } catch (error) {
       toast({
@@ -253,11 +263,13 @@ export function OcrDialog({ open, onOpenChange, onTextExtracted }: OcrDialogProp
             <div className="space-y-2">
               <Progress value={progress} className="w-full" />
               <p className="text-sm text-center text-muted-foreground">
-                {ocrEngine === "paddle"
-                  ? "Processing with PaddleOCR..."
+                {ocrEngine === "server"
+                  ? "Processing with AI Vision..."
                   : ocrEngine === "tesseract"
                     ? "Processing with Tesseract (fallback)..."
-                    : "Initializing OCR..."}
+                    : ocrEngine
+                      ? `Processed with ${ocrEngine}`
+                      : "Initializing OCR..."}
                 {" "}{progress}%
               </p>
             </div>
@@ -348,7 +360,7 @@ export function OcrDialog({ open, onOpenChange, onTextExtracted }: OcrDialogProp
               <div>
                 <p className="font-medium">Tips for best OCR results:</p>
                 <ul className="list-disc list-inside space-y-1 ml-2 text-sm">
-                  <li>Uses PaddleOCR (PP-OCRv4) with Tesseract.js fallback</li>
+                  <li>Uses Google Cloud Vision with Tesseract.js fallback</li>
                   <li>Use clear, high-contrast images</li>
                   <li>Ensure text is horizontal and legible</li>
                   <li>Works best with printed text (not handwriting)</li>

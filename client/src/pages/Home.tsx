@@ -26,6 +26,9 @@ import { CableForm } from "@/components/CableForm";
 import { CableVisualization } from "@/components/CableVisualization";
 import { CircuitManagement } from "@/components/CircuitManagement";
 import { SpliceTree } from "@/components/SpliceTree";
+import { CropDialog } from "@/components/CameraCaptureDialog";
+import { UndoButton } from "@/components/UndoButton";
+import { HistoryButton } from "@/components/HistoryButton";
 import { Plus, Cable as CableIcon, Workflow, Save, Upload, RotateCcw, Edit2, Check, X, Trash2, Layers, Home as HomeIcon, Phone, Sparkles, HelpCircle, Play } from "lucide-react";
 import { HelpTip } from "@/components/HelpTip";
 import { TutorialCursor } from "@/components/TutorialCursor";
@@ -98,6 +101,44 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
   const [editingMainSpliceName, setEditingMainSpliceName] = useState(false);
   const [tempMainSpliceName, setTempMainSpliceName] = useState("");
 
+  // Camera capture state — lives at page level so it survives dialog close/reopen
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const cameraActiveRef = useRef(false);
+  const [cameraRawImage, setCameraRawImage] = useState<string>("");
+  const [cropDialogOpen, setCropDialogOpen] = useState(false);
+  const [cameraOcrImage, setCameraOcrImage] = useState<string>("");
+
+  const handleCameraFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      // User cancelled camera — allow dialog to close normally again
+      cameraActiveRef.current = false;
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      // Use setTimeout to let the browser fully settle after returning from camera
+      setTimeout(() => {
+        setCameraRawImage(reader.result as string);
+        setCropDialogOpen(true);
+        setCableDialogOpen(true);
+        cameraActiveRef.current = false;
+      }, 200);
+    };
+    reader.onerror = () => {
+      cameraActiveRef.current = false;
+    };
+    reader.readAsDataURL(file);
+    // Reset after reading completes, not immediately
+    setTimeout(() => { if (e.target) e.target.value = ""; }, 500);
+  };
+
+  const handleTakePicture = () => {
+    cameraActiveRef.current = true;
+    cameraInputRef.current?.click();
+  };
+
   // Use mode-specific API endpoints to keep fiber and copper data separate
   const apiMode = mode === "fiber" ? "fiber" : "copper";
   const cablesEndpoint = `/api/${apiMode}/cables`;
@@ -169,14 +210,17 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
 
   // Sort context cables: "Feed" first, then Distribution
   const sortedCables = useMemo(() => {
+    const sortByName = (a: Cable, b: Cable) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+
     const feeds = contextCables.filter(c => {
       if (contextCableId !== null && c.id === contextCableId) return true;
       return c.type === "Feed";
-    });
+    }).sort(sortByName);
     const dists = contextCables.filter(c => {
       if (contextCableId !== null && c.id === contextCableId) return false;
       return c.type === "Distribution";
-    });
+    }).sort(sortByName);
     return [...feeds, ...dists];
   }, [contextCables, contextCableId]);
 
@@ -553,6 +597,22 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                   Save
                 </Button>
               </HelpTip>
+              <UndoButton
+                mode={mode}
+                helpMode={helpMode}
+                onUndo={() => {
+                  setMainSpliceName(localStorage.getItem(`spliceName-${mode}`) ?? "Main");
+                  setSelectedCableId(null);
+                }}
+              />
+              <HistoryButton
+                mode={mode}
+                helpMode={helpMode}
+                onRestore={() => {
+                  setMainSpliceName(localStorage.getItem(`spliceName-${mode}`) ?? "Main");
+                  setSelectedCableId(null);
+                }}
+              />
               <HelpTip text="Clear all cables and circuits to start fresh." enabled={helpMode} side="bottom">
                 <Button
                   variant="destructive"
@@ -692,105 +752,123 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
               </div>
             )}
             {/* Tab Navigation */}
-            <TabsList data-testid="tabs-main" className="w-full justify-start bg-transparent p-0">
-              {/* Cables Section - No Header */}
-              <div className="inline-flex flex-col">
-                <div className="h-6 mb-2"></div>
-                <HelpTip text="View and manage all cables in this splice. Add feed and distribution cables here." enabled={helpMode} side="bottom">
-                  <TabsTrigger value="input" data-testid="tab-input-data">
-                    <CableIcon className="h-4 w-4 mr-2" />
-                    Cables
-                  </TabsTrigger>
-                </HelpTip>
-              </div>
+            {(() => {
+              const uniquePrefixes = new Set<string>();
+              splicedCircuits.forEach(circuit => {
+                const parts = circuit.circuitId.split(',');
+                const prefix = parts[0]?.trim();
+                if (prefix) uniquePrefixes.add(prefix);
+              });
+              const groupedByPrefix: Record<string, Circuit[]> = {};
+              splicedCircuits.forEach(circuit => {
+                const parts = circuit.circuitId.split(',');
+                const prefix = parts[0]?.trim();
+                if (!prefix) return;
+                if (!groupedByPrefix[prefix]) groupedByPrefix[prefix] = [];
+                groupedByPrefix[prefix].push(circuit);
+              });
+              const prefixArray = Array.from(uniquePrefixes).sort((a, b) => {
+                const distributionCompare = getPrefixDistributionStart(a, groupedByPrefix) - getPrefixDistributionStart(b, groupedByPrefix);
+                if (distributionCompare !== 0) return distributionCompare;
+                const circuitCompare = getCircuitRangeStart(groupedByPrefix[a][0]?.circuitId ?? "") - getCircuitRangeStart(groupedByPrefix[b][0]?.circuitId ?? "");
+                if (circuitCompare !== 0) return circuitCompare;
+                return a.localeCompare(b);
+              });
+              const firstSpliceTab = prefixArray.length > 0
+                ? `prefix-splice-${prefixArray[0]}`
+                : distributionCables[0]
+                  ? `splice-${distributionCables[0].id}`
+                  : "input";
+              const hasSpliceMapping = prefixArray.length > 0 || distributionCables.length > 0;
+              const isSpliceMappingActive = activeTab !== "input";
 
-              {/* ID Splice Section with Header */}
-              {(() => {
-                const uniquePrefixes = new Set<string>();
-                splicedCircuits.forEach(circuit => {
-                  const parts = circuit.circuitId.split(',');
-                  const prefix = parts[0]?.trim();
-                  if (prefix) uniquePrefixes.add(prefix);
-                });
-                const groupedByPrefix: Record<string, Circuit[]> = {};
-                splicedCircuits.forEach(circuit => {
-                  const parts = circuit.circuitId.split(',');
-                  const prefix = parts[0]?.trim();
-                  if (!prefix) return;
-                  if (!groupedByPrefix[prefix]) groupedByPrefix[prefix] = [];
-                  groupedByPrefix[prefix].push(circuit);
-                });
-                const prefixArray = Array.from(uniquePrefixes).sort((a, b) => {
-                  const distributionCompare = getPrefixDistributionStart(a, groupedByPrefix) - getPrefixDistributionStart(b, groupedByPrefix);
-                  if (distributionCompare !== 0) return distributionCompare;
-                  const circuitCompare = getCircuitRangeStart(groupedByPrefix[a][0]?.circuitId ?? "") - getCircuitRangeStart(groupedByPrefix[b][0]?.circuitId ?? "");
-                  if (circuitCompare !== 0) return circuitCompare;
-                  return a.localeCompare(b);
-                });
-                if (prefixArray.length === 0) return null;
-
-                return (
-                  <>
-                    <div className="h-8 w-0.5 bg-border mx-3 self-end" />
-                    <HelpTip text="View splice details grouped by circuit ID prefix. Each tab shows circuits sharing the same prefix." enabled={helpMode} side="bottom">
-                      <div className="inline-flex flex-col">
-                        <div className="text-center border-x-2 border-border bg-muted/30 px-6 py-1 rounded-t mb-2">
-                          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">
-                            Splice by ID
-                          </h3>
-                        </div>
-                      <div className="inline-flex">
-                        {prefixArray.map(prefix => (
-                          <TabsTrigger
-                            key={`prefix-${prefix}`}
-                            value={`prefix-splice-${prefix}`}
-                            data-testid={`tab-prefix-splice-${prefix}`}
-                          >
-                            <Layers className="h-4 w-4 mr-2" />
-                            {prefix}
-                          </TabsTrigger>
-                        ))}
-                      </div>
-                    </div>
+              return (
+                <div className="space-y-3">
+                  <TabsList data-testid="tabs-main" className="flex h-auto min-h-10 w-full flex-wrap items-center justify-start gap-2 overflow-hidden bg-transparent p-0">
+                    <HelpTip text="View and manage all cables in this splice. Add feed and distribution cables here." enabled={helpMode} side="bottom">
+                      <TabsTrigger value="input" data-testid="tab-input-data">
+                        <CableIcon className="h-4 w-4 mr-2" />
+                        Cables
+                      </TabsTrigger>
                     </HelpTip>
-                  </>
-                );
-              })()}
+                    <HelpTip text="View splice mapping grouped by circuit ID or by distribution cable." enabled={helpMode} side="bottom">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => hasSpliceMapping && setActiveTab(firstSpliceTab)}
+                        disabled={!hasSpliceMapping}
+                        className={`h-9 px-3 ${isSpliceMappingActive ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
+                        data-testid="tab-splice-mapping"
+                      >
+                        <Layers className="h-4 w-4 mr-2" />
+                        Splice Mapping
+                      </Button>
+                    </HelpTip>
+                  </TabsList>
 
-              {/* Cable Splice Section with Header */}
-              {(distributionCables.length > 0 || feedCables.length > 0) && (
-                <>
-                  <div className="h-8 w-0.5 bg-border mx-3 self-end" />
-                  <HelpTip text="View splice details organized by cable. Each tab shows the splice mapping for a specific distribution cable." enabled={helpMode} side="bottom">
-                    <div className="inline-flex flex-col">
-                      <div className="text-center border-x-2 border-border bg-muted/30 px-6 py-1 rounded-t mb-2">
-                        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">
-                          Splice by Cable
-                        </h3>
-                      </div>
-                    <div className="inline-flex">
-                      {distributionCables.map((distCable) => {
-                          const parentCable = distCable.parentCableId
-                            ? cables.find(c => c.id === distCable.parentCableId)
-                            : null;
-                          return (
-                            <TabsTrigger
-                              key={distCable.id}
-                              value={`splice-${distCable.id}`}
-                              data-testid={`tab-splice-${distCable.id}`}
-                            >
-                              <CableIcon className="h-4 w-4 mr-2" />
-                              {distCable.name}
-                            </TabsTrigger>
-                          );
-                        })}
-                      {/* Feed cable tabs removed - feed splice info shown via distribution cable splice views */}
+                  {isSpliceMappingActive && hasSpliceMapping && (
+                    <div className="space-y-3 border-t pt-3">
+                      {prefixArray.length > 0 && (
+                        <HelpTip text="View splice details grouped by circuit ID prefix. Each tab shows circuits sharing the same prefix." enabled={helpMode} side="bottom">
+                          <div className="min-w-0 max-w-full">
+                            <div className="mb-2 border-x-2 border-border bg-muted/30 px-6 py-1 text-center">
+                              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">
+                                Splice by ID
+                              </h3>
+                            </div>
+                            <div className="flex h-auto max-w-full flex-wrap justify-start gap-1">
+                              {prefixArray.map(prefix => (
+                                <Button
+                                  key={`prefix-${prefix}`}
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setActiveTab(`prefix-splice-${prefix}`)}
+                                  className={`h-9 px-3 ${activeTab === `prefix-splice-${prefix}` ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
+                                  data-testid={`tab-prefix-splice-${prefix}`}
+                                >
+                                  <Layers className="h-4 w-4 mr-2" />
+                                  {prefix}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        </HelpTip>
+                      )}
+
+                      {distributionCables.length > 0 && (
+                        <HelpTip text="View splice details organized by cable. Each tab shows the splice mapping for a specific distribution cable." enabled={helpMode} side="bottom">
+                          <div className="min-w-0 max-w-full">
+                            <div className="mb-2 w-fit border-x-2 border-border bg-muted/30 px-6 py-1 text-center">
+                              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">
+                                Splice by Cable
+                              </h3>
+                            </div>
+                            <div className="flex h-auto max-w-full flex-wrap justify-start gap-1">
+                              {distributionCables.map((distCable) => (
+                                <Button
+                                  key={distCable.id}
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setActiveTab(`splice-${distCable.id}`)}
+                                  className={`h-9 px-3 ${activeTab === `splice-${distCable.id}` ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
+                                  data-testid={`tab-splice-${distCable.id}`}
+                                >
+                                  <CableIcon className="h-4 w-4 mr-2" />
+                                  {distCable.name}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        </HelpTip>
+                      )}
                     </div>
-                  </div>
-                  </HelpTip>
-                </>
-              )}
-            </TabsList>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           <TabsContent value="input" className="space-y-4">
@@ -808,9 +886,11 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                     const totalFibers = cableCircuits.reduce((sum, c) => sum + (c.fiberEnd - c.fiberStart + 1), 0);
                     const isValid = totalFibers === cable.fiberCount;
                     const isContextFeedCable = contextCableId !== null && cable.id === contextCableId;
-                    const typeColorClass = (cable.type === "Feed" || isContextFeedCable)
-                      ? "bg-green-100 dark:bg-green-950/50 hover:bg-green-200 dark:hover:bg-green-900/50"
-                      : "bg-blue-100 dark:bg-blue-950/50 hover:bg-blue-200 dark:hover:bg-blue-900/50";
+                    const typeColorClass = !isValid
+                      ? "bg-red-100 dark:bg-red-950/50 hover:bg-red-200 dark:hover:bg-red-900/50"
+                      : (cable.type === "Feed" || isContextFeedCable)
+                        ? "bg-green-100 dark:bg-green-950/50 hover:bg-green-200 dark:hover:bg-green-900/50"
+                        : "bg-blue-100 dark:bg-blue-950/50 hover:bg-blue-200 dark:hover:bg-blue-900/50";
                     return (
                       <div key={cable.id} className="flex flex-col gap-0.5">
                         <Button
@@ -1152,8 +1232,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                           No circuits marked as spliced for {prefix}.
                         </div>
                       ) : (
-                        <div className="rounded-md border overflow-x-auto inline-block">
-                          <Table className="text-sm w-auto">
+                        <div className="w-full max-w-full overflow-x-auto rounded-md border">
+                          <Table className="min-w-max text-sm">
                             <TableHeader>
                               <TableRow className="bg-muted/50">
                                 <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle">#</TableHead>
@@ -1463,8 +1543,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                         No circuits marked as spliced yet for {distCable.name}. Select this cable in the Cables tab and mark circuits as spliced.
                       </div>
                     ) : (
-                      <div className="rounded-md border overflow-x-auto inline-block">
-                        <Table className="text-sm w-auto">
+                      <div className="w-full max-w-full overflow-x-auto rounded-md border">
+                        <Table className="min-w-max text-sm">
                           <TableHeader>
                             <TableRow className="bg-muted/50">
                               <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle">#</TableHead>
@@ -1802,8 +1882,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                         No Distribution circuits spliced to {displayName(feedCable)} yet. Check circuits in Distribution cables.
                       </div>
                     ) : (
-                      <div className="rounded-md border overflow-x-auto inline-block">
-                        <Table className="text-sm w-auto">
+                      <div className="w-full max-w-full overflow-x-auto rounded-md border">
+                        <Table className="min-w-max text-sm">
                           <TableHeader>
                             <TableRow className="bg-muted/50">
                               <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle">#</TableHead>
@@ -2070,12 +2150,19 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
       </main>
 
       <Dialog open={cableDialogOpen} onOpenChange={(open) => {
+        // Don't close while camera is active (browser loses focus when camera app opens)
+        if (!open && cameraActiveRef.current) return;
         setCableDialogOpen(open);
         if (!open) {
           setEditingCable(null);
         }
       }}>
-        <DialogContent data-testid="dialog-cable-form">
+        <DialogContent
+          data-testid="dialog-cable-form"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onFocusOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => { if (cameraActiveRef.current) e.preventDefault(); }}
+        >
           <DialogHeader>
             <DialogTitle>
               {editingCable ? "Edit Cable" : contextCableId ? "Add Sub-Splice from f1" : "Add New Cable"}
@@ -2099,17 +2186,47 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
             mode={mode}
             existingCables={cables}
             splicedFromCable={contextCableId ? (cables.find(c => c.id === contextCableId) ?? undefined) : undefined}
+            onTakePicture={handleTakePicture}
+            cameraOcrImage={cameraOcrImage}
+            onCameraOcrImageUsed={() => setCameraOcrImage("")}
           />
         </DialogContent>
       </Dialog>
+
+      {/* Camera file input — lives at page level so it survives dialog lifecycle */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleCameraFileChange}
+        className="hidden"
+      />
+
+      <CropDialog
+        open={cropDialogOpen}
+        onOpenChange={setCropDialogOpen}
+        imageSrc={cameraRawImage}
+        onImageCropped={(croppedImage) => {
+          setCameraOcrImage(croppedImage);
+          setCropDialogOpen(false);
+          setCameraRawImage("");
+          // Ensure cable dialog is open so CableForm can receive the image
+          setCableDialogOpen(true);
+        }}
+        onRetake={() => {
+          setCropDialogOpen(false);
+          setCameraRawImage("");
+          setTimeout(() => cameraInputRef.current?.click(), 100);
+        }}
+      />
 
       <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
         <AlertDialogContent data-testid="dialog-reset-confirm">
           <AlertDialogHeader>
             <AlertDialogTitle>Reset All Data</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete all cables and circuits without saving. 
-              This action cannot be undone.
+              This will clear all cables and circuits without saving. You can use Undo afterward to restore the previous project state.
               Are you sure you want to continue?
             </AlertDialogDescription>
           </AlertDialogHeader>
