@@ -28,25 +28,19 @@ interface LayoutNode {
   children: LayoutNode[];
 }
 
-function countLeaves(node: LayoutNode): number {
-  if (node.children.length === 0) return 1;
-  return node.children.reduce((s, c) => s + countLeaves(c), 0);
-}
-
-// Assign y coords to distribution subtree; returns next available y
-function layoutDist(node: LayoutNode, depth: number, yStart: number): number {
+// Anchor each child group around its parent. Deeper branches should not reserve
+// extra vertical space in earlier generations of the tree.
+function layoutDist(node: LayoutNode, depth: number, y: number): void {
   node.depth = depth;
   node.x = PAD_X + depth * COL_W;
-  if (node.children.length === 0) {
-    node.y = yStart + ROW_H / 2;
-    return yStart + ROW_H;
+  node.y = y;
+
+  if (node.children.length > 0) {
+    const childStartY = y - ((node.children.length - 1) * ROW_H) / 2;
+    for (let i = 0; i < node.children.length; i += 1) {
+      layoutDist(node.children[i], depth + 1, childStartY + i * ROW_H);
+    }
   }
-  let y = yStart;
-  for (const child of node.children) {
-    y = layoutDist(child, depth + 1, y);
-  }
-  node.y = (node.children[0].y + node.children[node.children.length - 1].y) / 2;
-  return yStart + countLeaves(node) * ROW_H;
 }
 
 export function SpliceTree({
@@ -82,15 +76,15 @@ export function SpliceTree({
     }
 
     // Lay out distribution tree starting at depth 1 (feeds occupy depth 0)
-    let distY = PAD_Y;
-    for (const root of rootDists) {
-      distY = layoutDist(root, 1, distY);
+    const rootStartY = PAD_Y + ROW_H / 2;
+    for (let i = 0; i < rootDists.length; i += 1) {
+      layoutDist(rootDists[i], 1, rootStartY + i * ROW_H);
     }
-    const totalDistLeaves = Math.max(1, rootDists.reduce((s, r) => s + countLeaves(r), 0));
+    const rootDistCount = Math.max(1, rootDists.length);
 
     // ── Position feed cables ─────────────────────────────────────────────────
-    // Centre feeds over the y-span used by root distributions
-    const distYSpan = totalDistLeaves * ROW_H;
+    // Centre feeds over the root distribution span
+    const distYSpan = rootDistCount * ROW_H;
     const distYCentre = PAD_Y + distYSpan / 2;
     const feedCount = feeds.length || 1;
     // Always space feeds by at least ROW_H so labels never overlap
@@ -145,7 +139,7 @@ export function SpliceTree({
 
     const svgW = PAD_X * 2 + (maxDepth + 1) * COL_W;
     const maxBoxBottom = Math.max(...allNodes.map(n => n.y + NODE_BOX_BOTTOM));
-    const svgH = Math.max(PAD_Y * 2 + totalDistLeaves * ROW_H + shiftY, maxBoxBottom + PAD_Y);
+    const svgH = Math.max(PAD_Y * 2 + rootDistCount * ROW_H + shiftY, maxBoxBottom + PAD_Y);
 
     return { feedNodes, distNodes, edges, svgW, svgH };
   }, [cables]);
