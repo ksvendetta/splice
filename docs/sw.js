@@ -9,9 +9,9 @@ self.addEventListener('install', (event) => {
       console.log('Service Worker: Caching app shell');
       // Cache the basic shell - other assets will be cached on first request
       return cache.addAll([
-        '/splice/',
-        '/splice/index.html',
-        '/splice/manifest.json'
+        '/',
+        '/index.html',
+        '/manifest.json'
       ]);
     })
   );
@@ -142,7 +142,7 @@ self.addEventListener('fetch', (event) => {
         
         // Return offline page for navigation requests
         if (request.mode === 'navigate') {
-          return caches.match('/splice/index.html');
+          return caches.match('/index.html');
         }
         
         throw error;
