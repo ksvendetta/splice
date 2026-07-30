@@ -577,7 +577,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
             await queryClient.refetchQueries({ queryKey: [`/api/${mode}/circuits`] });
 
             // 5) Informational notice describing the split (non-destructive/default variant)
-            let noticeDescription = `Feed only covers ${sourceLabel} up to ${feedEnd}. Spliced ${distributionPrefix},${interStart}-${interEnd}`;
+            let noticeDescription = `The ${sourceLabel} only covers up to ${feedEnd}. Spliced ${distributionPrefix},${interStart}-${interEnd}`;
             for (const [rStart, rEnd] of remainders) {
               noticeDescription += `; created unspliced ${distributionPrefix},${rStart}-${rEnd} for the remainder`;
             }
