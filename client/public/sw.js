@@ -1,5 +1,5 @@
 // Service Worker for Fiber Splice Manager PWA
-const CACHE_NAME = 'fiber-splice-v4';
+const CACHE_NAME = 'fiber-splice-v5';
 
 // Install event - cache app shell
 self.addEventListener('install', (event) => {
