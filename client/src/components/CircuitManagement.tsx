@@ -437,7 +437,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
           });
         }
       } else {
-        // Single feed cable - process normally
+        // Single feed cable
         const matchingFeedCircuit = matchingFeedCircuits[0];
         const feedCable = allCables.find(c => c.id === matchingFeedCircuit.cableId);
 
@@ -449,43 +449,151 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
         const feedStart = parseInt(feedRangeParts[0]);
         const feedEnd = parseInt(feedRangeParts[1]);
 
-        // Calculate offset
-        const offsetFromFeedStart = distStart - feedStart;
-        const offsetFromFeedEnd = distEnd - feedStart;
-
         console.log(`[SPLICE] feedStart: ${feedStart}, feedEnd: ${feedEnd}`);
-        console.log(`[SPLICE] offsetFromFeedStart: ${offsetFromFeedStart}, offsetFromFeedEnd: ${offsetFromFeedEnd}`);
 
-        // Calculate the actual Feed fiber positions for this subset
-        const calculatedFeedFiberStart = matchingFeedCircuit.fiberStart + offsetFromFeedStart;
-        const calculatedFeedFiberEnd = matchingFeedCircuit.fiberStart + offsetFromFeedEnd;
+        // Does this single feed circuit cover the ENTIRE distribution range?
+        const fullyCovered = distStart >= feedStart && distEnd <= feedEnd;
 
-        console.log(`[SPLICE] calculatedFeedFiberStart: ${calculatedFeedFiberStart}, calculatedFeedFiberEnd: ${calculatedFeedFiberEnd}`);
+        if (fullyCovered) {
+          // Common case - map the full distribution range onto the feed unchanged
+          const offsetFromFeedStart = distStart - feedStart;
+          const offsetFromFeedEnd = distEnd - feedStart;
 
-        // Check for overlap: no other spliced circuit should already use these feed fibers
-        const overlapping = allCircuits.find(c => {
-          if (c.id === circuit.id) return false;
-          if (c.isSpliced !== 1) return false;
-          if (c.feedCableId !== feedCable?.id) return false;
-          if (!c.feedFiberStart || !c.feedFiberEnd) return false;
-          return calculatedFeedFiberStart <= c.feedFiberEnd && calculatedFeedFiberEnd >= c.feedFiberStart;
-        });
-        if (overlapping) {
-          const overlapCable = allCables.find(cc => cc.id === overlapping.cableId);
-          toast({
-            title: "Splice overlap detected",
-            description: `Feed fibers ${calculatedFeedFiberStart}-${calculatedFeedFiberEnd} are already spliced to "${overlapping.circuitId}" on ${overlapCable?.name ?? "another cable"}. Physical splice not possible.`,
-            variant: "destructive",
+          console.log(`[SPLICE] offsetFromFeedStart: ${offsetFromFeedStart}, offsetFromFeedEnd: ${offsetFromFeedEnd}`);
+
+          // Calculate the actual Feed fiber positions for this subset
+          const calculatedFeedFiberStart = matchingFeedCircuit.fiberStart + offsetFromFeedStart;
+          const calculatedFeedFiberEnd = matchingFeedCircuit.fiberStart + offsetFromFeedEnd;
+
+          console.log(`[SPLICE] calculatedFeedFiberStart: ${calculatedFeedFiberStart}, calculatedFeedFiberEnd: ${calculatedFeedFiberEnd}`);
+
+          // Check for overlap: no other spliced circuit should already use these feed fibers
+          const overlapping = allCircuits.find(c => {
+            if (c.id === circuit.id) return false;
+            if (c.isSpliced !== 1) return false;
+            if (c.feedCableId !== feedCable?.id) return false;
+            if (!c.feedFiberStart || !c.feedFiberEnd) return false;
+            return calculatedFeedFiberStart <= c.feedFiberEnd && calculatedFeedFiberEnd >= c.feedFiberStart;
           });
-          return;
-        }
+          if (overlapping) {
+            const overlapCable = allCables.find(cc => cc.id === overlapping.cableId);
+            toast({
+              title: "Splice overlap detected",
+              description: `Feed fibers ${calculatedFeedFiberStart}-${calculatedFeedFiberEnd} are already spliced to "${overlapping.circuitId}" on ${overlapCable?.name ?? "another cable"}. Physical splice not possible.`,
+              variant: "destructive",
+            });
+            return;
+          }
 
-        toggleSplicedMutation.mutate({
-          circuitId: circuit.id,
-          feedCableId: feedCable?.id,
-          feedFiberStart: calculatedFeedFiberStart,
-          feedFiberEnd: calculatedFeedFiberEnd,
-        });
+          toggleSplicedMutation.mutate({
+            circuitId: circuit.id,
+            feedCableId: feedCable?.id,
+            feedFiberStart: calculatedFeedFiberStart,
+            feedFiberEnd: calculatedFeedFiberEnd,
+          });
+        } else {
+          // Feed does NOT cover the whole distribution range -> SPLIT the circuit.
+          // The intersection with the feed becomes the spliced portion; any remainder
+          // beyond the feed becomes a new, separate, UNSPLICED circuit.
+          const interStart = Math.max(distStart, feedStart);
+          const interEnd = Math.min(distEnd, feedEnd);
+          const calculatedFeedFiberStart = matchingFeedCircuit.fiberStart + (interStart - feedStart);
+          const calculatedFeedFiberEnd = matchingFeedCircuit.fiberStart + (interEnd - feedStart);
+
+          console.log(`[SPLICE] Partial coverage - splitting. intersection ${interStart}-${interEnd}, feed fibers ${calculatedFeedFiberStart}-${calculatedFeedFiberEnd}`);
+
+          // Overlap pre-check for the spliced (intersection) portion. Abort without splitting.
+          const overlapping = allCircuits.find(c => {
+            if (c.id === circuit.id) return false;
+            if (c.isSpliced !== 1) return false;
+            if (c.feedCableId !== feedCable?.id) return false;
+            if (!c.feedFiberStart || !c.feedFiberEnd) return false;
+            return calculatedFeedFiberStart <= c.feedFiberEnd && calculatedFeedFiberEnd >= c.feedFiberStart;
+          });
+          if (overlapping) {
+            const overlapCable = allCables.find(cc => cc.id === overlapping.cableId);
+            toast({
+              title: "Splice overlap detected",
+              description: `Feed fibers ${calculatedFeedFiberStart}-${calculatedFeedFiberEnd} are already spliced to "${overlapping.circuitId}" on ${overlapCable?.name ?? "another cable"}. Physical splice not possible.`,
+              variant: "destructive",
+            });
+            return;
+          }
+
+          try {
+            const originalPosition = circuits.findIndex((c: Circuit) => c.id === circuit.id);
+
+            // 1) Shrink the original circuit to the intersection and splice it (clamped feed fibers)
+            const interCircuitId = `${distributionPrefix},${interStart}-${interEnd}`;
+            console.log(`[SPLICE] Updating original circuit to intersection: ${interCircuitId}`);
+            await apiRequest("PATCH", `/api/${mode}/circuits/${circuit.id}/update-circuit-id`, {
+              circuitId: interCircuitId,
+            });
+            await apiRequest("PATCH", `/api/${mode}/circuits/${circuit.id}/toggle-spliced`, {
+              feedCableId: feedCable?.id,
+              feedFiberStart: calculatedFeedFiberStart,
+              feedFiberEnd: calculatedFeedFiberEnd,
+            });
+
+            // 2) Build the unspliced remainder ranges (leading first, then trailing)
+            const remainders: [number, number][] = [];
+            if (distStart < feedStart) remainders.push([distStart, feedStart - 1]);
+            if (distEnd > feedEnd) remainders.push([feedEnd + 1, distEnd]);
+
+            // 3) Create each remainder as a new UNSPLICED circuit, positioned right after the spliced portion
+            for (let i = 0; i < remainders.length; i++) {
+              const [rStart, rEnd] = remainders[i];
+              const newCircuitId = `${distributionPrefix},${rStart}-${rEnd}`;
+
+              console.log(`[SPLICE] Creating unspliced remainder circuit: ${newCircuitId}`);
+              const response = await apiRequest("POST", `/api/${mode}/circuits`, {
+                cableId: circuit.cableId,
+                circuitId: newCircuitId,
+              });
+              const newCircuit = await response.json();
+
+              if (newCircuit && newCircuit.id) {
+                try {
+                  await queryClient.refetchQueries({ queryKey: [`/api/${mode}/circuits/cable`, cable.id] });
+                  const updatedCircuits = queryClient.getQueryData<Circuit[]>([`/api/${mode}/circuits/cable`, cable.id]) || [];
+                  const newCircuitPosition = updatedCircuits.findIndex((c: Circuit) => c.id === newCircuit.id);
+                  const targetPosition = originalPosition + i + 1;
+                  const movesNeeded = newCircuitPosition - targetPosition;
+                  console.log(`[SPLICE] Moving remainder ${newCircuitId} from ${newCircuitPosition} to ${targetPosition}`);
+                  for (let j = 0; j < movesNeeded; j++) {
+                    await apiRequest("PATCH", `/api/${mode}/circuits/${newCircuit.id}/move`, {
+                      direction: "up",
+                    });
+                  }
+                } catch (moveError) {
+                  console.error(`[SPLICE] Error moving remainder ${newCircuitId}:`, moveError);
+                  // Movement is not critical - don't rethrow
+                }
+              }
+            }
+
+            // 4) Refresh the UI
+            await queryClient.refetchQueries({ queryKey: [`/api/${mode}/circuits/cable`, cable.id] });
+            await queryClient.refetchQueries({ queryKey: [`/api/${mode}/circuits`] });
+
+            // 5) Informational notice describing the split (non-destructive/default variant)
+            let noticeDescription = `Feed only covers ${sourceLabel} up to ${feedEnd}. Spliced ${distributionPrefix},${interStart}-${interEnd}`;
+            for (const [rStart, rEnd] of remainders) {
+              noticeDescription += `; created unspliced ${distributionPrefix},${rStart}-${rEnd} for the remainder`;
+            }
+            noticeDescription += `.`;
+            toast({
+              title: "Circuit split — not enough feed fibers",
+              description: noticeDescription,
+            });
+          } catch (error) {
+            console.error('[SPLICE] Error splitting circuit (single feed):', error);
+            toast({
+              title: "Failed to split circuit",
+              variant: "destructive",
+            });
+          }
+        }
       }
     } else {
       // Unchecking - just toggle without feed cable info
