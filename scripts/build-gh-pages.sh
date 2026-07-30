@@ -6,12 +6,30 @@ echo "Building for GitHub Pages..."
 # Run the standard build
 npm run build
 
+# Preserve OCR runtime assets (onnxruntime-web wasm + PaddleOCR models).
+# These are large binaries that live only in docs/ (not emitted by the Vite
+# build), so they must survive the docs/ rebuild below.
+OCR_TMP="$(mktemp -d)"
+if [ -d docs ]; then
+  [ -d docs/models ] && cp -r docs/models "$OCR_TMP/"
+  mkdir -p "$OCR_TMP/assets"
+  for f in docs/ort-wasm-*.wasm; do [ -e "$f" ] && cp "$f" "$OCR_TMP/"; done
+  for f in docs/assets/ort-wasm-*.wasm; do [ -e "$f" ] && cp "$f" "$OCR_TMP/assets/"; done
+fi
+
 # Clear and recreate docs folder
 rm -rf docs
 mkdir -p docs
 
 # Copy build output to docs
 cp -r dist/public/* docs/
+
+# Restore preserved OCR runtime assets
+[ -d "$OCR_TMP/models" ] && cp -r "$OCR_TMP/models" docs/
+mkdir -p docs/assets
+for f in "$OCR_TMP"/ort-wasm-*.wasm; do [ -e "$f" ] && cp "$f" docs/; done
+for f in "$OCR_TMP"/assets/ort-wasm-*.wasm; do [ -e "$f" ] && cp "$f" docs/assets/; done
+rm -rf "$OCR_TMP"
 
 # Add .nojekyll to prevent Jekyll processing
 touch docs/.nojekyll
@@ -31,6 +49,7 @@ cat > docs/manifest.json << 'EOF'
   "short_name": "Fiber Splice",
   "description": "Fiber Optic Cable Splicing Management Application - Fully Offline",
   "start_url": "/splice/",
+  "scope": "/splice/",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#1e293b",
