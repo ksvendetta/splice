@@ -219,8 +219,11 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
       const matchingFeedCircuits = allCircuits.filter(c => {
         const cCable = allCables.find(cc => cc.id === c.cableId);
         if (parentCableId) {
-          // Sub-splice: only look at circuits belonging to the parent cable
-          if (c.cableId !== parentCableId) return false;
+          // Sub-splice: the sources are the parent cable (acting as f1) plus any
+          // additional Feed cables the user added directly to this sub-splice.
+          const isParentSource = c.cableId === parentCableId;
+          const isSiblingFeedSource = cCable?.type === "Feed" && cCable?.parentCableId === parentCableId;
+          if (!isParentSource && !isSiblingFeedSource) return false;
         } else {
           // Regular distribution: only look at Feed cable circuits
           if (cCable?.type !== "Feed") return false;

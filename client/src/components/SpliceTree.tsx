@@ -8,7 +8,7 @@ export interface SpliceTreeProps {
   contextCableId: string | null;
   onNodeClick: (cableId: string) => void;
   onAddSplice: (cable: Cable) => void;
-  mainSpliceName?: string; // Label shown on feed nodes instead of cable name
+  mainSpliceName?: string; // Reserved (splice name is shown in the nav panel, not on nodes)
 }
 
 // Layout constants
@@ -52,15 +52,21 @@ export function SpliceTree({
   onAddSplice,
   mainSpliceName,
 }: SpliceTreeProps) {
-  const { feedNodes, distNodes, edges, svgW, svgH } = useMemo(() => {
-    const feeds = cables.filter(c => c.type === "Feed");
+  const { feedNodes, distNodes, subFeedNodes, edges, svgW, svgH } = useMemo(() => {
+    // Node roles:
+    //  - Top feeds (Feed, no parent) are the primary sources at depth 0.
+    //  - Distributions form a tree by parentCableId (root dists at depth 1, sub-dists deeper).
+    //  - Sub-splice feeds (Feed WITH a parent) are extra sources that live in the SAME
+    //    column as their parent distribution, alongside it — not one column deeper.
+    const topFeeds = cables.filter(c => c.type === "Feed" && !c.parentCableId);
     const dists = cables.filter(c => c.type === "Distribution");
+    const subFeeds = cables.filter(c => c.type === "Feed" && c.parentCableId);
 
-    if (feeds.length === 0 && dists.length === 0) {
-      return { feedNodes: [], distNodes: [], edges: [], svgW: 0, svgH: 0 };
+    if (topFeeds.length === 0 && dists.length === 0 && subFeeds.length === 0) {
+      return { feedNodes: [], distNodes: [], subFeedNodes: [], edges: [], svgW: 0, svgH: 0 };
     }
 
-    // ── Build distribution tree ──────────────────────────────────────────────
+    // ── Build distribution tree (distributions only) ─────────────────────────
     const distMap = new Map<string, LayoutNode>();
     for (const c of dists) {
       distMap.set(c.id, { cable: c, depth: 1, x: 0, y: 0, children: [] });
@@ -82,67 +88,102 @@ export function SpliceTree({
     }
     const rootDistCount = Math.max(1, rootDists.length);
 
-    // ── Position feed cables ─────────────────────────────────────────────────
+    // ── Position top-level feed cables ───────────────────────────────────────
     // Centre feeds over the root distribution span
     const distYSpan = rootDistCount * ROW_H;
     const distYCentre = PAD_Y + distYSpan / 2;
-    const feedCount = feeds.length || 1;
+    const feedCount = topFeeds.length || 1;
     // Always space feeds by at least ROW_H so labels never overlap
     const feedSpread = (feedCount - 1) * ROW_H;
     const feedStartY = distYCentre - feedSpread / 2;
 
-    const feedNodes = feeds.map((cable, i) => ({
+    const feedNodes = topFeeds.map((cable, i) => ({
       cable,
       x: PAD_X,
       y: feedCount === 1 ? distYCentre : feedStartY + i * (feedSpread / (feedCount - 1)),
     }));
 
-    // ── Collect all dist nodes flat ──────────────────────────────────────────
     const distNodes = Array.from(distMap.values());
-    const allNodes = [...feedNodes, ...distNodes];
+
+    // ── Position sub-splice feeds in their parent's column ───────────────────
+    // Track which y positions are taken per column so sub-feeds don't overlap.
+    const occupied = new Map<number, number[]>();
+    const mark = (depth: number, y: number) => {
+      if (!occupied.has(depth)) occupied.set(depth, []);
+      occupied.get(depth)!.push(y);
+    };
+    for (const n of distNodes) mark(n.depth, n.y);
+    for (const n of feedNodes) mark(0, n.y);
+
+    const subFeedNodes: Array<{ cable: Cable; depth: number; x: number; y: number }> = [];
+    for (const sf of subFeeds) {
+      const parent = sf.parentCableId ? distMap.get(sf.parentCableId) : undefined;
+      const depth = parent ? parent.depth : 1; // same column as the parent distribution
+      const baseY = parent ? parent.y : rootStartY;
+      if (!occupied.has(depth)) occupied.set(depth, []);
+      const col = occupied.get(depth)!;
+      const collides = (yy: number) => col.some(o => Math.abs(o - yy) < ROW_H);
+      // Start next to the parent, then fan out until a free slot is found.
+      let y = baseY;
+      let step = 1;
+      while (collides(y)) {
+        const down = baseY + step * ROW_H;
+        if (!collides(down)) { y = down; break; }
+        const up = baseY - step * ROW_H;
+        if (!collides(up)) { y = up; break; }
+        step += 1;
+      }
+      mark(depth, y);
+      subFeedNodes.push({ cable: sf, depth, x: PAD_X + depth * COL_W, y });
+    }
+
+    // ── Normalise vertical offset so nothing clips above PAD_Y ───────────────
+    const allNodes = [...feedNodes, ...distNodes, ...subFeedNodes];
     const minBoxTop = Math.min(...allNodes.map(n => n.y - NODE_BOX_TOP));
     const shiftY = Math.max(0, PAD_Y - minBoxTop);
     if (shiftY > 0) {
-      for (const node of allNodes) {
-        node.y += shiftY;
-      }
+      for (const node of allNodes) node.y += shiftY;
     }
 
     let maxDepth = 1;
     for (const n of distNodes) if (n.depth > maxDepth) maxDepth = n.depth;
 
-    // ── Edges ────────────────────────────────────────────────────────────────
+    // ── Edges: driven by ACTUAL splices, not structure ───────────────────────
+    // A line is drawn from a source cable to a cable only where that cable has a
+    // spliced circuit pointing back at the source (feedCableId). So an unspliced
+    // feed/distribution shows no connecting lines.
+    const posById = new Map<string, { x: number; y: number }>();
+    for (const n of feedNodes) posById.set(n.cable.id, n);
+    for (const n of distNodes) posById.set(n.cable.id, n);
+    for (const n of subFeedNodes) posById.set(n.cable.id, n);
+
     type Edge = { x1: number; y1: number; x2: number; y2: number; key: string };
     const edges: Edge[] = [];
-
-    // Feed → each root distribution
-    for (const feed of feedNodes) {
-      for (const root of rootDists) {
-        edges.push({
-          x1: feed.x, y1: feed.y,
-          x2: root.x, y2: root.y,
-          key: `feed-${feed.cable.id}-${root.cable.id}`,
-        });
+    const seenEdge = new Set<string>();
+    for (const cable of cables) {
+      const sources = new Set<string>();
+      for (const c of circuits) {
+        if (c.cableId === cable.id && c.isSpliced === 1 && c.feedCableId) {
+          sources.add(c.feedCableId);
+        }
       }
-    }
-
-    // Distribution parent → children
-    for (const node of distNodes) {
-      for (const child of node.children) {
-        edges.push({
-          x1: node.x, y1: node.y,
-          x2: child.x, y2: child.y,
-          key: `${node.cable.id}-${child.cable.id}`,
-        });
-      }
+      sources.forEach(srcId => {
+        const from = posById.get(srcId);
+        const to = posById.get(cable.id);
+        if (!from || !to) return;
+        const key = `${srcId}->${cable.id}`;
+        if (seenEdge.has(key)) return;
+        seenEdge.add(key);
+        edges.push({ x1: from.x, y1: from.y, x2: to.x, y2: to.y, key });
+      });
     }
 
     const svgW = PAD_X * 2 + (maxDepth + 1) * COL_W;
     const maxBoxBottom = Math.max(...allNodes.map(n => n.y + NODE_BOX_BOTTOM));
     const svgH = Math.max(PAD_Y * 2 + rootDistCount * ROW_H + shiftY, maxBoxBottom + PAD_Y);
 
-    return { feedNodes, distNodes, edges, svgW, svgH };
-  }, [cables]);
+    return { feedNodes, distNodes, subFeedNodes, edges, svgW, svgH };
+  }, [cables, circuits]);
 
   // Pre-compute circuit totals per cable
   const totals = useMemo(() => {
@@ -154,7 +195,7 @@ export function SpliceTree({
     return map;
   }, [cables, circuits]);
 
-  if (feedNodes.length === 0 && distNodes.length === 0) return null;
+  if (feedNodes.length === 0 && distNodes.length === 0 && subFeedNodes.length === 0) return null;
 
   // Shared node renderer
   const renderNode = (
@@ -217,7 +258,7 @@ export function SpliceTree({
           fontWeight={isSelected ? "700" : "400"}
           className="fill-foreground select-none pointer-events-none"
         >
-          {isFeed ? (mainSpliceName || cable.spliceName || cable.name) : (cable.spliceName ?? cable.name)}
+          {cable.spliceName ?? cable.name}
         </text>
         {/* Fiber count — below */}
         <text
@@ -250,11 +291,14 @@ export function SpliceTree({
           );
         })}
 
-        {/* ── Feed nodes ── */}
+        {/* ── Top-level feed nodes ── */}
         {feedNodes.map(n => renderNode(n.cable, n.x, n.y, true))}
 
         {/* ── Distribution (splice) nodes ── */}
         {distNodes.map(n => renderNode(n.cable, n.x, n.y, false))}
+
+        {/* ── Sub-splice feed nodes (co-sources in their parent's column) ── */}
+        {subFeedNodes.map(n => renderNode(n.cable, n.x, n.y, true))}
       </svg>
     </div>
   );

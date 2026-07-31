@@ -39,6 +39,7 @@ import { Label } from "@/components/ui/label";
 import { Switch as ToggleSwitch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { sourceCableName, isSubSpliceSource } from "@/lib/cableNaming";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import {
@@ -181,12 +182,15 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
   // Filter cables by the current splice context
   const contextCables = useMemo(() => {
     if (contextCableId === null) {
-      // Root context: Feed cables + Distribution cables with no parentCableId
-      return cables.filter(c => c.type === "Feed" || !c.parentCableId);
+      // Root context: cables that live at the top level (no parent splice).
+      // A cable's context is determined by parentCableId, never by its type —
+      // so a Feed placed inside a sub-splice stays there instead of leaking here.
+      return cables.filter(c => !c.parentCableId);
     }
     // Sub-splice context: the context cable (as feed) + its direct children
+    // (both Feed and Distribution cables spliced into this sub-splice).
     const contextCable = cables.find(c => c.id === contextCableId);
-    const children = cables.filter(c => c.parentCableId === contextCableId && c.type === "Distribution");
+    const children = cables.filter(c => c.parentCableId === contextCableId);
     return contextCable ? [contextCable, ...children] : children;
   }, [cables, contextCableId]);
 
@@ -299,14 +303,35 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
   });
 
   const updateCableSpliceNameMutation = useMutation({
-    mutationFn: async ({ id, spliceName }: { id: string; spliceName: string }) => {
+    mutationFn: async ({ id, spliceName, name }: { id: string; spliceName?: string; name?: string }) => {
       const cable = cables.find(c => c.id === id)!;
-      return await apiRequest("PUT", `${cablesEndpoint}/${id}`, { ...cable, spliceName });
+      const payload: any = { ...cable };
+      if (spliceName !== undefined) payload.spliceName = spliceName;
+      if (name !== undefined) payload.name = name;
+      return await apiRequest("PUT", `${cablesEndpoint}/${id}`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [cablesEndpoint] });
     },
   });
+
+  // Enter (or create) a sub-splice from a cable. On first creation the source cable is
+  // renamed with an "-F<n>" designation (e.g. d3 → D3-F4) since it now acts as a feed,
+  // and any provided splice name is stored — both in a single cable update.
+  const enterSubSplice = (cable: Cable, rawSpliceName: string) => {
+    const spliceName = rawSpliceName.trim();
+    const changes: { id: string; spliceName?: string; name?: string } = { id: cable.id };
+    if (spliceName) changes.spliceName = spliceName;
+    if (!isSubSpliceSource(cable, cables)) changes.name = sourceCableName(cable, cables);
+    if (changes.spliceName !== undefined || changes.name !== undefined) {
+      updateCableSpliceNameMutation.mutate(changes);
+    }
+    setContextCableId(cable.id);
+    setSelectedCableId(null);
+    setActiveTab("input");
+    setPendingSpliceContextCable(null);
+    setSpliceNamingDialogOpen(false);
+  };
 
   const handleSaveClick = () => {
     setSaveFileName(""); // Clear previous filename
@@ -400,8 +425,9 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
   const handleCableSubmit = (data: InsertCable) => {
     if (editingCable) {
       updateCableMutation.mutate({ id: editingCable.id, data });
-    } else if (contextCableId && data.type === "Distribution") {
-      // In sub-splice context: only distribution cables belong to this context
+    } else if (contextCableId) {
+      // In a sub-splice context, every new cable — Feed or Distribution —
+      // belongs to this sub-splice, so tie it to the context cable.
       createCableMutation.mutate({ ...data, parentCableId: contextCableId });
     } else {
       createCableMutation.mutate(data);
@@ -430,17 +456,20 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
   // Feed cables in current context
   const feedCables = useMemo(() => {
     if (contextCableId !== null) {
+      // The context cable acts as the primary feed (f1), plus any additional
+      // Feed cables the user added directly to this sub-splice.
       const contextCable = cables.find(c => c.id === contextCableId);
-      return contextCable ? [contextCable] : [];
+      const feedChildren = cables.filter(c => c.parentCableId === contextCableId && c.type === "Feed");
+      return contextCable ? [contextCable, ...feedChildren] : feedChildren;
     }
     return contextCables.filter(c => c.type === "Feed");
   }, [contextCables, contextCableId, cables]);
 
   const selectedCable = cables.find((c) => c.id === selectedCableId);
 
-  // In a sub-splice context, the distribution cable acting as feed is displayed as "f1"
-  const displayName = (cable: Cable) =>
-    contextCableId !== null && cable.id === contextCableId ? "f1" : cable.name;
+  // Cables always display under their own (unique) name — even the parent cable
+  // that acts as the source inside its sub-splice. No generic "f1" aliasing.
+  const displayName = (cable: Cable) => cable.name;
 
   // 25-pair copper cable color codes (tip/ring combinations with actual color values)
   const pairColors = [
@@ -1494,12 +1523,14 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
         >
           <DialogHeader>
             <DialogTitle>
-              {editingCable ? "Edit Cable" : "Add New Cable"}
+              {editingCable ? "Edit Cable" : contextCableId ? "Add Cable to Sub-Splice" : "Add New Cable"}
             </DialogTitle>
             <DialogDescription>
               {editingCable
                 ? "Update cable details and circuit information"
-                : "Create a new cable with circuits for splicing"}
+                : contextCableId
+                  ? "Add a feed or distribution cable to this sub-splice"
+                  : "Create a new cable with circuits for splicing"}
             </DialogDescription>
           </DialogHeader>
           <CableForm
@@ -1512,6 +1543,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
             isLoading={createCableMutation.isPending || updateCableMutation.isPending}
             mode={mode}
             existingCables={cables}
+            splicedFromCable={contextCableId ? (cables.find(c => c.id === contextCableId) ?? undefined) : undefined}
             onTakePicture={handleTakePicture}
             cameraOcrImage={cameraOcrImage}
             onCameraOcrImageUsed={() => setCameraOcrImage("")}
@@ -1555,11 +1587,9 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
             localStorage.setItem(`spliceName-${mode}`, name);
             setMainSpliceName(name);
           } else if (spliceNamingContext === "sub" && pendingSpliceContextCable) {
-            // Enter context without renaming
-            setContextCableId(pendingSpliceContextCable.id);
-            setSelectedCableId(null);
-            setActiveTab("input");
-            setPendingSpliceContextCable(null);
+            // Create/enter the sub-splice (renaming the source cable) without a splice name
+            enterSubSplice(pendingSpliceContextCable, "");
+            return;
           }
           setSpliceNamingDialogOpen(false);
         }
@@ -1588,13 +1618,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                     setMainSpliceName(name);
                     setSpliceNamingDialogOpen(false);
                   } else if (pendingSpliceContextCable) {
-                    const name = spliceNamingInput.trim();
-                    if (name) updateCableSpliceNameMutation.mutate({ id: pendingSpliceContextCable.id, spliceName: name });
-                    setContextCableId(pendingSpliceContextCable.id);
-                    setSelectedCableId(null);
-                    setActiveTab("input");
-                    setPendingSpliceContextCable(null);
-                    setSpliceNamingDialogOpen(false);
+                    enterSubSplice(pendingSpliceContextCable, spliceNamingInput);
                   }
                 }
               }}
@@ -1604,14 +1628,12 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
           <div className="flex justify-end gap-2">
             {spliceNamingContext === "sub" && (
               <Button variant="outline" onClick={() => {
-                // Skip naming — just enter context
+                // Skip naming — still create/enter the sub-splice (and rename the source)
                 if (pendingSpliceContextCable) {
-                  setContextCableId(pendingSpliceContextCable.id);
-                  setSelectedCableId(null);
-                  setActiveTab("input");
-                  setPendingSpliceContextCable(null);
+                  enterSubSplice(pendingSpliceContextCable, "");
+                } else {
+                  setSpliceNamingDialogOpen(false);
                 }
-                setSpliceNamingDialogOpen(false);
               }}>
                 Skip
               </Button>
@@ -1623,13 +1645,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                 setMainSpliceName(name);
                 setSpliceNamingDialogOpen(false);
               } else if (pendingSpliceContextCable) {
-                const name = spliceNamingInput.trim();
-                if (name) updateCableSpliceNameMutation.mutate({ id: pendingSpliceContextCable.id, spliceName: name });
-                setContextCableId(pendingSpliceContextCable.id);
-                setSelectedCableId(null);
-                setActiveTab("input");
-                setPendingSpliceContextCable(null);
-                setSpliceNamingDialogOpen(false);
+                enterSubSplice(pendingSpliceContextCable, spliceNamingInput);
               }
             }}>
               {spliceNamingContext === "main" ? "Set Name" : "Name & Enter"}
