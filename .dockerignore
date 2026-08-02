@@ -1,0 +1,8 @@
+.git
+node_modules
+dist
+docs
+deploy/*
+!deploy/nginx.conf
+*.md
+.replit
