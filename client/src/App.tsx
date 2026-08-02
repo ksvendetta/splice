@@ -8,8 +8,10 @@ import Home from "@/pages/Home";
 import CopperHome from "@/pages/CopperHome";
 import NotFound from "@/pages/not-found";
 
-// Base path for GitHub Pages deployment
-const basePath = import.meta.env.PROD ? "/splice" : "";
+// Base path derived from the Vite base (BASE_URL). This is "/splice/" for the
+// GitHub Pages build and "/" when built with --base=/ (the propcortex subdomain),
+// so the router basename matches wherever the app is served.
+const basePath = import.meta.env.BASE_URL.replace(/\/+$/, "");
 
 function AppRouter({ mode, setMode }: { mode: "fiber" | "copper"; setMode: (mode: "fiber" | "copper") => void }) {
   return (

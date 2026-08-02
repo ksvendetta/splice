@@ -2,8 +2,9 @@
 export function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      // Use base path for GitHub Pages deployment
-      const swPath = import.meta.env.PROD ? '/splice/sw.js' : '/sw.js';
+      // Derive from the Vite base so it matches wherever the app is served
+      // ("/splice/sw.js" on GitHub Pages, "/sw.js" at the subdomain root).
+      const swPath = `${import.meta.env.BASE_URL}sw.js`;
       navigator.serviceWorker
         .register(swPath)
         .then((registration) => {
