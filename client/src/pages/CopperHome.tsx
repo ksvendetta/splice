@@ -543,7 +543,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
         <Table className="min-w-max text-sm">
           <TableHeader>
             <TableRow className="bg-muted/50">
-              <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle">#</TableHead>
+              <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle w-16">#</TableHead>
               <TableHead colSpan={useBinderView ? 2 : 3} rowSpan={2} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-1 px-2 align-middle">{feedLabel}</TableHead>
               <TableHead className="text-center py-1 px-2">
                 <div className="flex items-center justify-center gap-1">
@@ -1114,12 +1114,12 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                               value={`splice-${distCable.id}`}
                               data-testid={`tab-splice-${distCable.id}`}
                             >
-                              <CableIcon className="h-4 w-4 mr-2" />
+                              <CableIcon className="h-4 w-4 mr-2 text-sky-400" />
                               {distCable.name}
                             </TabsTrigger>
                           );
                         })}
-                      {feedCables.filter(() => contextCableId === null).map((feedCable) => (
+                      {feedCables.map((feedCable) => (
                         <TabsTrigger
                           key={`feed-${feedCable.id}`}
                           value={`feed-splice-${feedCable.id}`}
@@ -1415,7 +1415,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                 <TabsContent key={`prefix-${prefix}`} value={`prefix-splice-${prefix}`}>
                   <Card>
                     <CardHeader>
-                      <CardTitle>{prefix} Splice</CardTitle>
+                      <CardTitle className="text-center pl-16">{prefix} Splice</CardTitle>
                     </CardHeader>
                     <CardContent>
                       {prefixCircuits.length === 0 ? (
@@ -1451,8 +1451,8 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
               <TabsContent key={distCable.id} value={`splice-${distCable.id}`}>
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base font-bold">
-                      Splice Mapping - {distCable.name}
+                    <CardTitle className="text-base font-bold text-center pl-16">
+                      {distCable.name}-{distCable.fiberCount}
                       {parentCable && (
                         <span className="ml-2 text-sm font-normal text-muted-foreground">(sub-splice from {displayName(parentCable)})</span>
                       )}
@@ -1488,7 +1488,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
               <TabsContent key={`feed-${feedCable.id}`} value={`feed-splice-${feedCable.id}`}>
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base font-bold">Splice Mapping - {displayName(feedCable)}</CardTitle>
+                    <CardTitle className="text-base font-bold text-center pl-16">{displayName(feedCable)}-{feedCable.fiberCount}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     {circuitsLoading ? (

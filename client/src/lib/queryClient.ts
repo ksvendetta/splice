@@ -222,7 +222,7 @@ export async function apiRequest(
                 const feedParts = feedCircuit.circuitId.split(',');
                 if (feedParts.length !== 2) continue;
                 const feedPrefix = feedParts[0].trim();
-                if (feedPrefix !== distPrefix) continue;
+                if (feedPrefix.toLowerCase() !== distPrefix.toLowerCase()) continue;
 
                 const feedRangeParts = feedParts[1].trim().split('-');
                 if (feedRangeParts.length !== 2) continue;
@@ -368,7 +368,7 @@ export async function apiRequest(
                     const feedParts = feedCircuit.circuitId.split(',');
                     if (feedParts.length === 2) {
                       const feedPrefix = feedParts[0].trim();
-                      if (feedPrefix === distPrefix) {
+                      if (feedPrefix.toLowerCase() === distPrefix.toLowerCase()) {
                         const feedRangeParts = feedParts[1].trim().split('-');
                         if (feedRangeParts.length === 2) {
                           const feedStart = parseInt(feedRangeParts[0]);
@@ -490,7 +490,7 @@ export async function apiRequest(
                     const feedParts = feedCircuit.circuitId.split(',');
                     if (feedParts.length === 2) {
                       const feedPrefix = feedParts[0].trim();
-                      if (feedPrefix === distPrefix) {
+                      if (feedPrefix.toLowerCase() === distPrefix.toLowerCase()) {
                         const feedRangeParts = feedParts[1].trim().split('-');
                         if (feedRangeParts.length === 2) {
                           const feedStart = parseInt(feedRangeParts[0]);

@@ -235,8 +235,8 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
 
         const feedPrefix = feedParts[0].trim();
 
-        // Check if prefixes match
-        if (feedPrefix !== distributionPrefix) return false;
+        // Check if prefixes match (case-insensitive: "LG52" matches "lg52")
+        if (feedPrefix.toLowerCase() !== distributionPrefix.toLowerCase()) return false;
 
         // Parse source range
         const feedRangeParts = feedParts[1].trim().split('-');
@@ -654,8 +654,8 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
       
       if (isNaN(existingStart) || isNaN(existingEnd)) continue;
       
-      // Check if same prefix
-      if (newPrefix === existingPrefix) {
+      // Check if same prefix (case-insensitive: "LG52" and "lg52" are the same)
+      if (newPrefix.toLowerCase() === existingPrefix.toLowerCase()) {
         // Check for overlap: ranges overlap if newStart <= existingEnd AND newEnd >= existingStart
         if (newStart <= existingEnd && newEnd >= existingStart) {
           return { 

@@ -803,12 +803,16 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                 if (circuitCompare !== 0) return circuitCompare;
                 return a.localeCompare(b);
               });
+              // Feed cables get "Splice by Cable" tabs in every context, including
+              // sub-splices (where the context cable acts as the feed / source).
               const firstSpliceTab = prefixArray.length > 0
                 ? `prefix-splice-${prefixArray[0]}`
                 : distributionCables[0]
                   ? `splice-${distributionCables[0].id}`
-                  : "input";
-              const hasSpliceMapping = prefixArray.length > 0 || distributionCables.length > 0;
+                  : feedCables[0]
+                    ? `feed-splice-${feedCables[0].id}`
+                    : "input";
+              const hasSpliceMapping = prefixArray.length > 0 || distributionCables.length > 0 || feedCables.length > 0;
               const isSpliceMappingActive = activeTab !== "input";
 
               return (
@@ -866,8 +870,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                         </HelpTip>
                       )}
 
-                      {distributionCables.length > 0 && (
-                        <HelpTip text="View splice details organized by cable. Each tab shows the splice mapping for a specific distribution cable." enabled={helpMode} side="bottom">
+                      {(feedCables.length > 0 || distributionCables.length > 0) && (
+                        <HelpTip text="View splice details organized by cable. Feed cable tabs list every splice fed by that cable; distribution cable tabs show that cable's splice mapping." enabled={helpMode} side="bottom">
                           <div className="min-w-0 max-w-full">
                             <div className="mb-2 w-fit border-x-2 border-border bg-muted/30 px-6 py-1 text-center">
                               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">
@@ -885,8 +889,22 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                   className={`h-9 px-3 ${activeTab === `splice-${distCable.id}` ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
                                   data-testid={`tab-splice-${distCable.id}`}
                                 >
-                                  <CableIcon className="h-4 w-4 mr-2" />
+                                  <CableIcon className="h-4 w-4 mr-2 text-sky-400" />
                                   {distCable.name}
+                                </Button>
+                              ))}
+                              {feedCables.map((feedCable) => (
+                                <Button
+                                  key={`feed-${feedCable.id}`}
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setActiveTab(`feed-splice-${feedCable.id}`)}
+                                  className={`h-9 px-3 ${activeTab === `feed-splice-${feedCable.id}` ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
+                                  data-testid={`tab-feed-splice-${feedCable.id}`}
+                                >
+                                  <CableIcon className="h-4 w-4 mr-2 text-green-600 dark:text-green-400" />
+                                  {displayName(feedCable)}
                                 </Button>
                               ))}
                             </div>
@@ -1253,7 +1271,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                 <TabsContent key={`prefix-${prefix}`} value={`prefix-splice-${prefix}`}>
                   <Card>
                     <CardHeader>
-                      <CardTitle>{prefix} Splice</CardTitle>
+                      <CardTitle className="text-center pl-16">{prefix} Splice</CardTitle>
                     </CardHeader>
                     <CardContent>
                       {prefixCircuits.length === 0 ? (
@@ -1265,7 +1283,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                           <Table className="min-w-max text-sm">
                             <TableHeader>
                               <TableRow className="bg-muted/50">
-                                <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle">#</TableHead>
+                                <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle w-16">#</TableHead>
                                 <TableHead colSpan={useRibbonView ? 2 : 3} rowSpan={2} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-1 px-2 align-middle">Feed</TableHead>
                                 <TableHead className="text-center py-1 px-2">
                                   <div className="flex items-center justify-center gap-1">
@@ -1557,8 +1575,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
               <TabsContent key={distCable.id} value={`splice-${distCable.id}`}>
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base font-bold">
-                      Splice Mapping - {distCable.name}
+                    <CardTitle className="text-base font-bold text-center pl-16">
+                      {distCable.name}-{distCable.fiberCount}
                       {parentCable && (
                         <span className="ml-2 text-sm font-normal text-muted-foreground">(sub-splice from {displayName(parentCable)})</span>
                       )}
@@ -1576,7 +1594,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                         <Table className="min-w-max text-sm">
                           <TableHeader>
                             <TableRow className="bg-muted/50">
-                              <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle">#</TableHead>
+                              <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle w-16">#</TableHead>
                               <TableHead colSpan={useRibbonView ? 2 : 3} rowSpan={2} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-1 px-2 align-middle">{parentCable ? `Source (${displayName(parentCable)})` : "Feed"}</TableHead>
                               <TableHead className="text-center py-1 px-2">
                                 <div className="flex items-center justify-center gap-1">
@@ -1901,7 +1919,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
               <TabsContent key={`feed-${feedCable.id}`} value={`feed-splice-${feedCable.id}`}>
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base font-bold">Splice Mapping - {displayName(feedCable)}</CardTitle>
+                    <CardTitle className="text-base font-bold text-center pl-16">{displayName(feedCable)}-{feedCable.fiberCount}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     {circuitsLoading ? (
@@ -1915,7 +1933,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                         <Table className="min-w-max text-sm">
                           <TableHeader>
                             <TableRow className="bg-muted/50">
-                              <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle">#</TableHead>
+                              <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle w-16">#</TableHead>
                               <TableHead colSpan={useRibbonView ? 2 : 3} rowSpan={2} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-1 px-2 align-middle">Feed</TableHead>
                               <TableHead className="text-center py-1 px-2">
                                 <div className="flex items-center justify-center gap-1">
