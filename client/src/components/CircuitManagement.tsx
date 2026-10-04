@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Trash2, CheckCircle2, XCircle, Edit2, Check, X, ChevronUp, ChevronDown, Scan, Camera } from "lucide-react";
+import { Trash2, CheckCircle2, XCircle, Edit2, Check, X, ChevronUp, ChevronDown, Scan, Camera, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
@@ -38,7 +38,6 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
   const [editingCircuitValue, setEditingCircuitValue] = useState("");
   const [insertAfterIndex, setInsertAfterIndex] = useState<number | null>(null);
   const [insertCircuitValue, setInsertCircuitValue] = useState("");
-  const [hoveredCircuitIndex, setHoveredCircuitIndex] = useState<number | null>(null);
   const [circuitInputFocused, setCircuitInputFocused] = useState(false);
   const [ocrDialogOpen, setOcrDialogOpen] = useState(false);
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
@@ -772,66 +771,82 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
     setInsertCircuitValue("");
   };
 
-  const renderInsertCircuitRow = (insertAt: number, anchorCircuitId: string, position: "before" | "after", columnCount: number, hoverIndex: number) => {
-    const insertIndex = insertAt - 1;
-    const isActive = insertAfterIndex === insertIndex;
+  const renderInsertCircuitRow = (insertAt: number, anchorCircuitId: string, position: "before" | "after", columnCount: number) => {
+    const isActive = insertAfterIndex === insertAt - 1;
+
+    if (!isActive) {
+      const addCountLabel = mode === "fiber" ? "Add Fiber Count" : "Add Pair Count";
+
+      const hasSpliceColumn = cable.type === "Distribution" && !isContextFeed;
+
+      // Zero-height row: the "+" sits on the divider between two counts without adding height.
+      return (
+        <tr key={`${anchorCircuitId}-insert-${position}`}>
+          {/* Spacer so the "+" lines up with the Circuit ID column, not the Splice checkbox. */}
+          {hasSpliceColumn && <td className="h-0 p-0" />}
+          <td colSpan={hasSpliceColumn ? columnCount - 1 : columnCount} className="relative h-0 p-0">
+            {/* Button's hover-elevate forces position: relative, so the wrapper does the positioning. */}
+            <div className="absolute left-4 top-0 z-10 -translate-y-1/2">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6 rounded-full border-sky-400 bg-card text-sky-700 shadow-sm [&_svg]:size-3.5 dark:border-sky-700 dark:text-sky-300"
+                onClick={() => openInsertAt(insertAt)}
+                title={addCountLabel}
+                aria-label={addCountLabel}
+                data-testid={`button-insert-circuit-${position}-${anchorCircuitId}`}
+              >
+                <Plus />
+              </Button>
+            </div>
+          </td>
+        </tr>
+      );
+    }
 
     return (
       <TableRow
         key={`${anchorCircuitId}-insert-${position}`}
         className="border-b border-sky-200 bg-sky-50 hover:bg-sky-100 dark:border-sky-900 dark:bg-sky-950/30 dark:hover:bg-sky-950/45"
-        onMouseEnter={() => setHoveredCircuitIndex(hoverIndex)}
       >
         <TableCell colSpan={columnCount} className="h-8 p-1">
-          {isActive ? (
-            <div className="flex items-center gap-2">
-              <Input
-                value={insertCircuitValue}
-                onChange={(e) => setInsertCircuitValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleInsertCircuit();
-                  if (e.key === "Escape") {
-                    setInsertAfterIndex(null);
-                    setInsertCircuitValue("");
-                  }
-                }}
-                placeholder="Circuit ID"
-                className="h-8 max-w-xs font-mono text-sm"
-                data-testid={`input-insert-circuit-${position}-${anchorCircuitId}`}
-                autoFocus
-              />
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={handleInsertCircuit}
-                disabled={createCircuitMutation.isPending}
-                data-testid={`button-save-insert-circuit-${position}-${anchorCircuitId}`}
-              >
-                <Check className="h-4 w-4 text-green-600" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => {
+          <div className="flex items-center gap-2">
+            <Input
+              value={insertCircuitValue}
+              onChange={(e) => setInsertCircuitValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleInsertCircuit();
+                if (e.key === "Escape") {
                   setInsertAfterIndex(null);
                   setInsertCircuitValue("");
-                }}
-                data-testid={`button-cancel-insert-circuit-${position}-${anchorCircuitId}`}
-              >
-                <X className="h-4 w-4 text-red-600" />
-              </Button>
-            </div>
-          ) : (
+                }
+              }}
+              placeholder="Circuit ID"
+              className="h-8 max-w-xs font-mono text-sm"
+              data-testid={`input-insert-circuit-${position}-${anchorCircuitId}`}
+              autoFocus
+            />
             <Button
-              size="sm"
+              size="icon"
               variant="ghost"
-              className="h-6 w-full border border-dashed border-sky-400 bg-white/70 text-sky-700 hover:bg-white hover:text-sky-900 dark:border-sky-700 dark:bg-sky-950/60 dark:text-sky-300 dark:hover:bg-sky-950"
-              onClick={() => openInsertAt(insertAt)}
-              data-testid={`button-insert-circuit-${position}-${anchorCircuitId}`}
+              onClick={handleInsertCircuit}
+              disabled={createCircuitMutation.isPending}
+              data-testid={`button-save-insert-circuit-${position}-${anchorCircuitId}`}
             >
-              Add Fiber Count
+              <Check className="h-4 w-4 text-green-600" />
             </Button>
-          )}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => {
+                setInsertAfterIndex(null);
+                setInsertCircuitValue("");
+              }}
+              data-testid={`button-cancel-insert-circuit-${position}-${anchorCircuitId}`}
+            >
+              <X className="h-4 w-4 text-red-600" />
+            </Button>
+          </div>
         </TableCell>
       </TableRow>
     );
@@ -1219,7 +1234,8 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
 
         {circuits.length > 0 && (
           <div className="rounded-md border">
-            <Table>
+            {/* Bottom margin keeps the last "+" (which hangs below the final row) inside the scroll area. */}
+            <Table className="mb-4">
               <TableHeader>
                 <TableRow>
                   {cable.type === "Distribution" && !isContextFeed && (
@@ -1231,7 +1247,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                   <TableHead className="w-[15%] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody onMouseLeave={() => setHoveredCircuitIndex(null)}>
+              <TableBody>
                 {circuits.map((circuit, index) => {
                   const ribbonDisplay = getRibbonAndStrandDisplay(
                     circuit.fiberStart,
@@ -1241,18 +1257,14 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                   const isEditing = editingCircuitId === circuit.id;
                   const isDeadCircuit = isDeadCircuitId(circuit.circuitId);
                   const columnCount = cable.type === "Distribution" && !isContextFeed ? 5 : 4;
-                  const showHoverInsertRows = hoveredCircuitIndex === index && insertAfterIndex === null;
-                  const showInsertAbove = showHoverInsertRows || (index === 0 && insertAfterIndex === -1);
-                  const showInsertBelow = showHoverInsertRows || insertAfterIndex === index;
-                  
+
                   return (
                     <Fragment key={`${circuit.id}-with-insert`}>
-                    {showInsertAbove && renderInsertCircuitRow(index, circuit.id, "before", columnCount, index)}
+                    {index === 0 && renderInsertCircuitRow(0, circuit.id, "before", columnCount)}
                     <TableRow
                       key={circuit.id}
                       className={isDeadCircuit ? "bg-red-50/80 hover:bg-red-100/80 dark:bg-red-950/20 dark:hover:bg-red-950/30" : undefined}
                       data-testid={`row-circuit-${circuit.id}`}
-                      onMouseEnter={() => setHoveredCircuitIndex(index)}
                     >
                       {cable.type === "Distribution" && !isContextFeed && (
                         <TableCell>
@@ -1370,7 +1382,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                         </div>
                       </TableCell>
                     </TableRow>
-                    {showInsertBelow && renderInsertCircuitRow(index + 1, circuit.id, "after", columnCount, index)}
+                    {renderInsertCircuitRow(index + 1, circuit.id, "after", columnCount)}
                     </Fragment>
                   );
                 })}
