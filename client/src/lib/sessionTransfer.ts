@@ -16,7 +16,14 @@ export const FRAME_PREFIX = "FSM1";
 // base64url characters per frame. Chosen well under the 2,953-byte ceiling:
 // smaller frames mean a lower QR version with chunkier modules, which a phone
 // camera locks onto far more reliably than a dense version-40 code.
-export const FRAME_PAYLOAD_LIMIT = 1200;
+//
+// 600 is measured, not guessed. Rendering a frame and decoding it back with
+// jsQR, 1200-byte frames failed outright at 460px and only decoded from a
+// pixel-perfect render above ~5 px per module; 800-byte frames failed once the
+// image was resampled the way a camera resolves part of a screen. At 600 bytes
+// (81 modules at EC level M) every resampling step still decoded, which is the
+// headroom a camera pointed at a monitor actually needs.
+export const FRAME_PAYLOAD_LIMIT = 600;
 
 export type TransferPayload = {
   mode: "fiber" | "copper";

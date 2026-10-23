@@ -16,11 +16,14 @@ import type { Cable, Circuit } from "@shared/schema";
 
 // How long each frame stays on screen. Slow enough for a phone to lock focus,
 // quick enough that a ten-frame project cycles in a few seconds.
-const FRAME_INTERVAL_MS = 700;
+const FRAME_INTERVAL_MS = 600;
 
-// Drawn size of the code. Large matters here: more frames mean denser codes,
-// and a phone needs reasonably big modules to read one off a monitor.
-const QR_PIXELS = 460;
+// Drawn size of the code. This is not cosmetic: at 460px a full frame did not
+// decode back at all, and only cleared about 5 px per module from a perfect
+// render. 720px with FRAME_PAYLOAD_LIMIT-sized frames gives ~8 px per module,
+// which survives a camera resolving the code at a fraction of screen
+// resolution. Error correction M over L for the same reason.
+const QR_PIXELS = 720;
 
 type QrShareButtonProps = {
   mode: "fiber" | "copper";
@@ -77,7 +80,7 @@ export function QrShareButton({ mode, cables, circuits, spliceName, helpMode = f
     if (!canvas || !frame) return;
 
     QRCode.toCanvas(canvas, frame, {
-      errorCorrectionLevel: "L",
+      errorCorrectionLevel: "M",
       width: QR_PIXELS,
       margin: 2,
       // Always light-on-dark-modules: a QR inverted for dark mode will not scan.
@@ -119,7 +122,7 @@ export function QrShareButton({ mode, cables, circuits, spliceName, helpMode = f
         </DialogTrigger>
       </HelpTip>
 
-      <DialogContent className="max-w-[min(92vw,620px)]" data-testid="dialog-qr-share">
+      <DialogContent className="max-w-[min(96vw,820px)]" data-testid="dialog-qr-share">
         <DialogHeader>
           <DialogTitle>Scan with the phone app</DialogTitle>
           <DialogDescription>
@@ -140,7 +143,12 @@ export function QrShareButton({ mode, cables, circuits, spliceName, helpMode = f
             <>
               {/* White plate so the code stays scannable in dark mode. */}
               <div className="rounded-lg bg-white p-3">
-                <canvas ref={canvasRef} data-testid="canvas-qr" />
+                <canvas
+                  ref={canvasRef}
+                  className="h-auto w-full"
+                  style={{ maxWidth: QR_PIXELS }}
+                  data-testid="canvas-qr"
+                />
               </div>
 
               {multiFrame && (
