@@ -2,6 +2,10 @@ import { getDb } from './db';
 import type { Cable, Circuit, Save, InsertCable, InsertCircuit } from '@/../../shared/schema';
 import { nanoid } from 'nanoid';
 
+// How many saves History keeps per mode. Reset adds one each time, so this is
+// the window of old projects a user can go back to.
+export const MAX_SAVES = 20;
+
 // Storage service using IndexedDB (Dexie)
 export const storage = {
   // Cable operations
@@ -96,20 +100,23 @@ export const storage = {
     const db = getDb(mode);
     const cables = await db.cables.toArray();
     const circuits = await db.circuits.toArray();
+    // Reset clears the splice name too, so keep it with the save or a restore
+    // would come back unnamed.
+    const spliceName = localStorage.getItem(`spliceName-${mode}`);
 
     const newSave: Save = {
       id: nanoid(),
       name,
       createdAt: new Date().toISOString(),
-      data: JSON.stringify({ cables, circuits })
+      data: JSON.stringify({ mode, cables, circuits, spliceName })
     };
 
     await db.saves.add(newSave);
 
-    // Keep only last 50 saves
+    // Keep only the newest MAX_SAVES; the oldest fall off the end.
     const allSaves = await db.saves.orderBy('createdAt').reverse().toArray();
-    if (allSaves.length > 50) {
-      const oldSaves = allSaves.slice(50);
+    if (allSaves.length > MAX_SAVES) {
+      const oldSaves = allSaves.slice(MAX_SAVES);
       await Promise.all(oldSaves.map(s => db.saves.delete(s.id)));
     }
 
@@ -118,6 +125,10 @@ export const storage = {
 
   async deleteSave(id: string, mode: 'fiber' | 'copper' = 'fiber'): Promise<void> {
     await getDb(mode).saves.delete(id);
+  },
+
+  async deleteAllSaves(mode: 'fiber' | 'copper' = 'fiber'): Promise<void> {
+    await getDb(mode).saves.clear();
   },
 
   async loadSave(id: string, mode: 'fiber' | 'copper' = 'fiber'): Promise<void> {
@@ -134,6 +145,13 @@ export const storage = {
     // Restore cables and circuits
     await db.cables.bulkAdd(saveData.cables);
     await db.circuits.bulkAdd(saveData.circuits);
+
+    // Saves written before spliceName was stored simply have nothing to restore.
+    if (saveData.spliceName) {
+      localStorage.setItem(`spliceName-${mode}`, saveData.spliceName);
+    } else {
+      localStorage.removeItem(`spliceName-${mode}`);
+    }
   },
 
   async getProjectSnapshot(mode: 'fiber' | 'copper' = 'fiber'): Promise<{ cables: Cable[]; circuits: Circuit[] }> {

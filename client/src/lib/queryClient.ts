@@ -545,6 +545,10 @@ export async function apiRequest(
           const { id: saveId } = data as any;
           await storage.loadSave(saveId, mode);
           result = { success: true };
+        } else if (!id) {
+          // DELETE /api/:mode/saves with no id clears every save
+          await storage.deleteAllSaves(mode);
+          result = { success: true };
         } else {
           await storage.deleteSave(id, mode);
           result = { success: true };

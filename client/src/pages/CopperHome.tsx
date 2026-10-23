@@ -29,7 +29,8 @@ import { SpliceTree } from "@/components/SpliceTree";
 import { CropDialog } from "@/components/CameraCaptureDialog";
 import { UndoButton } from "@/components/UndoButton";
 import { HistoryButton } from "@/components/HistoryButton";
-import { Plus, Cable as CableIcon, Workflow, Save, Upload, RotateCcw, Edit2, Check, X, Trash2, Layers, Home as HomeIcon, Phone, Sparkles, ChevronLeft, ChevronDown, HelpCircle, Play } from "lucide-react";
+import { QrShareButton } from "@/components/QrShareButton";
+import { Plus, Cable as CableIcon, Workflow, Save, RotateCcw, Edit2, Check, X, Trash2, Layers, Home as HomeIcon, Phone, Sparkles, ChevronLeft, ChevronDown, HelpCircle, Play } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { HelpTip } from "@/components/HelpTip";
 import { TutorialCursor } from "@/components/TutorialCursor";
@@ -40,6 +41,7 @@ import { Switch as ToggleSwitch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { sourceCableName, isSubSpliceSource } from "@/lib/cableNaming";
+import { autoSaveName } from "@/lib/saveNaming";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import {
@@ -283,12 +285,26 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
 
   const resetMutation = useMutation({
     mutationFn: async () => {
+      // Snapshot the project into History before clearing, so a Reset is
+      // always recoverable. Never block the reset if the save fails.
+      if (cables.length > 0 || allCircuits.length > 0) {
+        try {
+          await apiRequest("POST", `/api/${apiMode}/saves`, {
+            name: autoSaveName(mainSpliceName),
+          });
+        } catch (err) {
+          console.error("Could not save project before reset:", err);
+        }
+      }
       return await apiRequest("DELETE", `/api/${apiMode}/reset`, undefined);
     },
     onSuccess: async () => {
       // Force refetch to clear the UI
       await queryClient.refetchQueries({ queryKey: [cablesEndpoint] });
       await queryClient.refetchQueries({ queryKey: [circuitsEndpoint] });
+      // Queries are staleTime: Infinity, so History would not show the save we
+      // just took until a reload without this.
+      await queryClient.refetchQueries({ queryKey: [`/api/${apiMode}/saves`] });
       setSelectedCableId(null);
       setContextCableId(null);
       setResetDialogOpen(false);
@@ -864,17 +880,6 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                   <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${helpMode ? "translate-x-9" : "translate-x-0.5"}`} />
                 </button>
               </HelpTip>
-              <HelpTip text="Load a previously saved splice project from a JSON file." enabled={helpMode} side="bottom">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleLoad}
-                  data-testid="button-load"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Load
-                </Button>
-              </HelpTip>
               <HelpTip text="Save your current splice project to a JSON file for later use." enabled={helpMode} side="bottom">
                 <Button
                   variant="default"
@@ -897,6 +902,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
               <HistoryButton
                 mode={mode}
                 helpMode={helpMode}
+                onBrowse={handleLoad}
                 onRestore={() => {
                   setMainSpliceName(localStorage.getItem(`spliceName-${mode}`) ?? "Main");
                   setSelectedCableId(null);
@@ -931,10 +937,21 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
               }}
               className="mb-6 border rounded-lg p-4 bg-muted/30"
             >
-              <CollapsibleTrigger className="flex items-center gap-1 w-full text-left text-base font-bold text-foreground mb-1 border-b pb-2 hover:text-primary transition-colors">
-                <ChevronDown className={`h-4 w-4 transition-transform ${spliceTreeOpen ? '' : '-rotate-90'}`} />
-                Splice Tree
-              </CollapsibleTrigger>
+              {/* Header row: the trigger fills it, with Share pinned to the end
+                  so tapping Share never toggles the panel. */}
+              <div className="flex items-center gap-2 mb-1 border-b pb-2">
+                <CollapsibleTrigger className="flex items-center gap-1 flex-1 min-w-0 text-left text-base font-bold text-foreground hover:text-primary transition-colors">
+                  <ChevronDown className={`h-4 w-4 transition-transform ${spliceTreeOpen ? '' : '-rotate-90'}`} />
+                  Splice Tree
+                </CollapsibleTrigger>
+                <QrShareButton
+                  mode={mode}
+                  cables={cables}
+                  circuits={allCircuits}
+                  spliceName={mainSpliceName}
+                  helpMode={helpMode}
+                />
+              </div>
               <CollapsibleContent>
                 <SpliceTree
                   cables={cables}
@@ -1659,8 +1676,8 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
           <AlertDialogHeader>
             <AlertDialogTitle>Reset All Data</AlertDialogTitle>
             <AlertDialogDescription>
-              This will clear all cables and circuits without saving. You can use Undo afterward to restore the previous project state.
-              Are you sure you want to continue?
+              The current project is saved to History first, so you can restore it later from there or with Undo.
+              This will then clear all cables and circuits. Are you sure you want to continue?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
