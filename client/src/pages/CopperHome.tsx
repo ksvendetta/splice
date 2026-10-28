@@ -30,6 +30,7 @@ import { CropDialog } from "@/components/CameraCaptureDialog";
 import { UndoButton } from "@/components/UndoButton";
 import { HistoryButton } from "@/components/HistoryButton";
 import { QrShareButton } from "@/components/QrShareButton";
+import { SpliceSortHeader, type SpliceSortMode } from "@/components/SpliceSortHeader";
 import { Plus, Cable as CableIcon, Workflow, Save, RotateCcw, Edit2, Check, X, Trash2, Layers, Home as HomeIcon, Phone, Sparkles, ChevronLeft, ChevronDown, HelpCircle, Play } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { HelpTip } from "@/components/HelpTip";
@@ -73,6 +74,11 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveFileName, setSaveFileName] = useState("");
   const [useBinderView, setUseBinderView] = useState(true);
+  // Which column each splice table is ordered by, keyed by table
+  const [spliceSortModes, setSpliceSortModes] = useState<Record<string, SpliceSortMode>>({});
+  const getSpliceSort = (key: string, fallback: SpliceSortMode) => spliceSortModes[key] ?? fallback;
+  const setSpliceSort = (key: string, mode: SpliceSortMode) =>
+    setSpliceSortModes((prev) => ({ ...prev, [key]: mode }));
   const [spliceTreeOpen, setSpliceTreeOpen] = useState(() => {
     const stored = localStorage.getItem(`spliceTreeOpen-${mode}`);
     return stored === null ? true : stored === "true";
@@ -543,14 +549,49 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
   };
 
   // Render splice table for a list of spliced circuits
-  const renderSpliceTable = (splicedCircuitsList: Circuit[], tableIdPrefix: string, feedLabel: string = "Feed") => {
+  const compareByCircuitIdCount = (a: Circuit, b: Circuit) => {
+    try {
+      const partsA = parseCircuitIdParts(a.circuitId);
+      const partsB = parseCircuitIdParts(b.circuitId);
+      if (partsA.prefix !== partsB.prefix) return partsA.prefix.localeCompare(partsB.prefix);
+      return partsA.rangeStart - partsB.rangeStart;
+    } catch {
+      return a.circuitId.localeCompare(b.circuitId);
+    }
+  };
+
+  const compareByBinder = (side: "feed" | "dist") => (a: Circuit, b: Circuit) => {
+    const start = (circuit: Circuit) => (side === "feed"
+      ? circuit.feedFiberStart || circuit.fiberStart
+      : circuit.fiberStart) || Number.MAX_SAFE_INTEGER;
+
+    const pairCompare = start(a) - start(b);
+    if (pairCompare !== 0) return pairCompare;
+
+    const circuitCompare = compareByCircuitIdCount(a, b);
+    if (circuitCompare !== 0) return circuitCompare;
+
+    return (a.position ?? 0) - (b.position ?? 0);
+  };
+
+  const renderSpliceTable = (
+    splicedCircuitsList: Circuit[],
+    tableIdPrefix: string,
+    feedLabel: string = "Feed",
+    sortOptions?: { defaultMode?: SpliceSortMode }
+  ) => {
+    const sortMode = getSpliceSort(tableIdPrefix, sortOptions?.defaultMode ?? "circuit");
+    const sortedCircuits = [...splicedCircuitsList].sort(
+      sortMode === "circuit" ? compareByCircuitIdCount : compareByBinder(sortMode)
+    );
+
     // Calculate total splice rows based on current view mode
     const totalSpliceRows = useBinderView
-      ? splicedCircuitsList.reduce((sum, circuit) => {
+      ? sortedCircuits.reduce((sum, circuit) => {
           const pairCount = circuit.fiberEnd - circuit.fiberStart + 1;
           return sum + (pairCount / 25);
         }, 0)
-      : splicedCircuitsList.reduce((sum, circuit) => {
+      : sortedCircuits.reduce((sum, circuit) => {
           return sum + (circuit.fiberEnd - circuit.fiberStart + 1);
         }, 0);
 
@@ -581,18 +622,42 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
             </TableRow>
             <TableRow>
               <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
-              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Binder</TableHead>
+              <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                <SpliceSortHeader
+                  label="Binder"
+                  mode="feed"
+                  value={sortMode}
+                  onChange={(mode) => setSpliceSort(tableIdPrefix, mode)}
+                  idPrefix={tableIdPrefix}
+                />
+              </TableHead>
               {!useBinderView && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Pair</TableHead>}
-              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Circuit</TableHead>
+              <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                <SpliceSortHeader
+                  label="Circuit"
+                  mode="circuit"
+                  value={sortMode}
+                  onChange={(mode) => setSpliceSort(tableIdPrefix, mode)}
+                  idPrefix={tableIdPrefix}
+                />
+              </TableHead>
               {!useBinderView && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Pair</TableHead>}
-              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Binder</TableHead>
+              <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                <SpliceSortHeader
+                  label="Binder"
+                  mode="dist"
+                  value={sortMode}
+                  onChange={(mode) => setSpliceSort(tableIdPrefix, mode)}
+                  idPrefix={tableIdPrefix}
+                />
+              </TableHead>
               <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {(() => {
               let rowNumber = 0;
-              return splicedCircuitsList.flatMap((circuit, circuitIndex) => {
+              return sortedCircuits.flatMap((circuit, circuitIndex) => {
                 const distributionCable = cables.find((c) => c.id === circuit.cableId);
                 const feedCable = circuit.feedCableId ? cables.find((c) => c.id === circuit.feedCableId) : undefined;
 
@@ -1440,7 +1505,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                           No circuits marked as spliced for {prefix}.
                         </div>
                       ) : (
-                        renderSpliceTable(prefixCircuits, `prefix-${prefix}`)
+                        renderSpliceTable(prefixCircuits, `prefix-${prefix}`, "Feed", { defaultMode: "circuit" })
                       )}
                     </CardContent>
                   </Card>
@@ -1483,7 +1548,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                         No circuits marked as spliced yet for {distCable.name}. Select this cable in the Cables tab and mark circuits as spliced.
                       </div>
                     ) : (
-                      renderSpliceTable(cableSplicedCircuits, `dist-${distCable.id}`, parentCable ? `Source (${displayName(parentCable)})` : "Feed")
+                      renderSpliceTable(cableSplicedCircuits, `dist-${distCable.id}`, parentCable ? `Source (${displayName(parentCable)})` : "Feed", { defaultMode: "dist" })
                     )}
                   </CardContent>
                 </Card>
@@ -1515,7 +1580,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
                         No Distribution circuits spliced to {displayName(feedCable)} yet. Check circuits in Distribution cables.
                       </div>
                     ) : (
-                      renderSpliceTable(feedSplicedCircuits, `feed-${feedCable.id}`)
+                      renderSpliceTable(feedSplicedCircuits, `feed-${feedCable.id}`, "Feed", { defaultMode: "feed" })
                     )}
                   </CardContent>
                 </Card>

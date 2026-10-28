@@ -30,6 +30,7 @@ import { CropDialog } from "@/components/CameraCaptureDialog";
 import { UndoButton } from "@/components/UndoButton";
 import { HistoryButton } from "@/components/HistoryButton";
 import { QrShareButton } from "@/components/QrShareButton";
+import { SpliceSortHeader, type SpliceSortMode } from "@/components/SpliceSortHeader";
 import { Plus, Cable as CableIcon, Workflow, Save, RotateCcw, Edit2, Check, X, Trash2, Layers, Home as HomeIcon, Phone, Sparkles, HelpCircle, Play } from "lucide-react";
 import { HelpTip } from "@/components/HelpTip";
 import { TutorialCursor } from "@/components/TutorialCursor";
@@ -88,6 +89,11 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveFileName, setSaveFileName] = useState("");
   const [useRibbonView, setUseRibbonView] = useState(true);
+  // Which column each splice table is ordered by, keyed by table
+  const [spliceSortModes, setSpliceSortModes] = useState<Record<string, SpliceSortMode>>({});
+  const getSpliceSort = (key: string, fallback: SpliceSortMode) => spliceSortModes[key] ?? fallback;
+  const setSpliceSort = (key: string, mode: SpliceSortMode) =>
+    setSpliceSortModes((prev) => ({ ...prev, [key]: mode }));
   const [spliceTreeOpen, setSpliceTreeOpen] = useState(() => {
     const stored = localStorage.getItem(`spliceTreeOpen-${mode}`);
     return stored === null ? true : stored === "true";
@@ -548,6 +554,22 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
 
     return (a.position ?? 0) - (b.position ?? 0);
   };
+
+  const compareByFeedRibbon = (a: Circuit, b: Circuit) => {
+    const aStart = a.feedFiberStart || a.fiberStart || Number.MAX_SAFE_INTEGER;
+    const bStart = b.feedFiberStart || b.fiberStart || Number.MAX_SAFE_INTEGER;
+    if (aStart !== bStart) return aStart - bStart;
+
+    const circuitCompare = compareByCircuitIdCount(a, b);
+    if (circuitCompare !== 0) return circuitCompare;
+
+    return (a.position ?? 0) - (b.position ?? 0);
+  };
+
+  const spliceComparator = (mode: SpliceSortMode) =>
+    mode === "feed" ? compareByFeedRibbon
+      : mode === "dist" ? compareByDistributionRibbon
+        : compareByCircuitIdCount;
 
   const getPrefixDistributionStart = (prefix: string, groupedByPrefix: Record<string, Circuit[]>) => {
     return Math.min(
@@ -1234,8 +1256,10 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
             const getColorForRibbon = (ribbon: number) => fiberColors[(ribbon - 1) % 12];
             
             return prefixes.map(prefix => {
-              // Sort circuits by their range start number
-              const prefixCircuits = [...groupedByPrefix[prefix]].sort(compareByCircuitIdCount);
+              // Row order follows the per-table sort choice (ribbon or circuit ID)
+              const prefixSortKey = `prefix-${prefix}`;
+              const prefixSort = getSpliceSort(prefixSortKey, "circuit");
+              const prefixCircuits = [...groupedByPrefix[prefix]].sort(spliceComparator(prefixSort));
 
               // Calculate total rows by actually counting them
               let totalSpliceRows = 0;
@@ -1322,11 +1346,35 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                               </TableRow>
                               <TableRow>
                                 <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
-                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">Ribbon</TableHead>
+                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                                  <SpliceSortHeader
+                                    label="Ribbon"
+                                    mode="feed"
+                                    value={prefixSort}
+                                    onChange={(mode) => setSpliceSort(prefixSortKey, mode)}
+                                    idPrefix={prefixSortKey}
+                                  />
+                                </TableHead>
                                 {!useRibbonView && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
-                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">Circuit</TableHead>
+                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                                  <SpliceSortHeader
+                                    label="Circuit"
+                                    mode="circuit"
+                                    value={prefixSort}
+                                    onChange={(mode) => setSpliceSort(prefixSortKey, mode)}
+                                    idPrefix={prefixSortKey}
+                                  />
+                                </TableHead>
                                 {!useRibbonView && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
-                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">Ribbon</TableHead>
+                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                                  <SpliceSortHeader
+                                    label="Ribbon"
+                                    mode="dist"
+                                    value={prefixSort}
+                                    onChange={(mode) => setSpliceSort(prefixSortKey, mode)}
+                                    idPrefix={prefixSortKey}
+                                  />
+                                </TableHead>
                                 <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
                               </TableRow>
                             </TableHeader>
@@ -1340,22 +1388,21 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                   pairGroups.get(key)!.push(circuit);
                                 });
 
-                                const allRows: React.ReactNode[] = [];
-                                let groupIdx = 0;
-                                let rowNumber = 0;
-                                pairGroups.forEach((pairCircuits, pairKey) => {
-                                  const [pairFeedId, pairDistId] = pairKey.split(':');
-                                  const pairFeedCable = cables.find(c => c.id === pairFeedId);
-                                  const pairDistCable = cables.find(c => c.id === pairDistId);
-
-                                  const groupBgColor = groupIdx % 2 === 0
+                                // Alternating shade still follows the cable pair, but the rows
+                                // themselves stay in the chosen sort order.
+                                const pairBgColors = new Map<string, string>();
+                                Array.from(pairGroups.keys()).forEach((key, idx) => {
+                                  pairBgColors.set(key, idx % 2 === 0
                                     ? "bg-white dark:bg-background"
-                                    : "bg-gray-200 dark:bg-muted/50";
-                                  groupIdx++;
-                                  pairCircuits.forEach((circuit) => {
+                                    : "bg-gray-200 dark:bg-muted/50");
+                                });
+
+                                const allRows: React.ReactNode[] = [];
+                                let rowNumber = 0;
+                                prefixCircuits.forEach((circuit) => {
                                     const distributionCable = cables.find((c) => c.id === circuit.cableId);
                                     const feedCable = circuit.feedCableId ? cables.find((c) => c.id === circuit.feedCableId) : undefined;
-                                    const rowBgColor = groupBgColor;
+                                    const rowBgColor = pairBgColors.get(`${circuit.feedCableId ?? 'none'}:${circuit.cableId}`) ?? "bg-white dark:bg-background";
 
                                     if (!feedCable) {
                                       rowNumber++;
@@ -1525,7 +1572,6 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                         );
                                       }
                                     }
-                                  });
                                 });
                                 return allRows;
                               })()}
@@ -1544,9 +1590,11 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
             const parentCable = distCable.parentCableId
               ? cables.find(c => c.id === distCable.parentCableId)
               : null;
+            const distSortKey = `dist-${distCable.id}`;
+            const distSort = getSpliceSort(distSortKey, "dist");
             const cableSplicedCircuits = splicedCircuits
               .filter(c => c.cableId === distCable.id)
-              .sort(compareByDistributionRibbon);
+              .sort(spliceComparator(distSort));
             
             // Calculate total rows by matching the rendering logic exactly
             let totalSpliceRows = 0;
@@ -1633,11 +1681,35 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                             </TableRow>
                             <TableRow>
                               <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Ribbon</TableHead>
+                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                                <SpliceSortHeader
+                                  label="Ribbon"
+                                  mode="feed"
+                                  value={distSort}
+                                  onChange={(mode) => setSpliceSort(distSortKey, mode)}
+                                  idPrefix={distSortKey}
+                                />
+                              </TableHead>
                               {!useRibbonView && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Circuit</TableHead>
+                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                                <SpliceSortHeader
+                                  label="Circuit"
+                                  mode="circuit"
+                                  value={distSort}
+                                  onChange={(mode) => setSpliceSort(distSortKey, mode)}
+                                  idPrefix={distSortKey}
+                                />
+                              </TableHead>
                               {!useRibbonView && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Ribbon</TableHead>
+                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                                <SpliceSortHeader
+                                  label="Ribbon"
+                                  mode="dist"
+                                  value={distSort}
+                                  onChange={(mode) => setSpliceSort(distSortKey, mode)}
+                                  idPrefix={distSortKey}
+                                />
+                              </TableHead>
                               <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
                             </TableRow>
                           </TableHeader>
@@ -1885,12 +1957,11 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
           {/* Feed Cable Splice Tabs */}
           {feedCables.map((feedCable) => {
             // Get all Distribution circuits that are spliced to this Feed cable
-            const feedSplicedCircuits = allCircuits.filter(c => 
+            const feedSortKey = `feed-${feedCable.id}`;
+            const feedSort = getSpliceSort(feedSortKey, "feed");
+            const feedSplicedCircuits = allCircuits.filter(c =>
               c.isSpliced === 1 && c.feedCableId === feedCable.id
-            ).sort((a, b) => {
-              // Sort by feedFiberStart position
-              return (a.feedFiberStart || 0) - (b.feedFiberStart || 0);
-            });
+            ).sort(spliceComparator(feedSort));
             
             // Calculate total rows by matching the rendering logic exactly
             let totalSpliceRows = 0;
@@ -1972,11 +2043,35 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                             </TableRow>
                             <TableRow>
                               <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Ribbon</TableHead>
+                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                                <SpliceSortHeader
+                                  label="Ribbon"
+                                  mode="feed"
+                                  value={feedSort}
+                                  onChange={(mode) => setSpliceSort(feedSortKey, mode)}
+                                  idPrefix={feedSortKey}
+                                />
+                              </TableHead>
                               {!useRibbonView && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Circuit</TableHead>
+                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                                <SpliceSortHeader
+                                  label="Circuit"
+                                  mode="circuit"
+                                  value={feedSort}
+                                  onChange={(mode) => setSpliceSort(feedSortKey, mode)}
+                                  idPrefix={feedSortKey}
+                                />
+                              </TableHead>
                               {!useRibbonView && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Ribbon</TableHead>
+                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                                <SpliceSortHeader
+                                  label="Ribbon"
+                                  mode="dist"
+                                  value={feedSort}
+                                  onChange={(mode) => setSpliceSort(feedSortKey, mode)}
+                                  idPrefix={feedSortKey}
+                                />
+                              </TableHead>
                               <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
                             </TableRow>
                           </TableHeader>
