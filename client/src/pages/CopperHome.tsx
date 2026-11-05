@@ -22,7 +22,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { CableCard } from "@/components/CableCard";
-import { CableForm } from "@/components/CableForm";
+import { CableForm, type CableFormSubmit } from "@/components/CableForm";
+import { spliceNewCableCircuits } from "@/lib/spliceCircuit";
 import { CableVisualization } from "@/components/CableVisualization";
 import { CircuitManagement } from "@/components/CircuitManagement";
 import { SpliceTree } from "@/components/SpliceTree";
@@ -62,6 +63,8 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
   const tutorialAbortRef = useRef<AbortController | null>(null);
   const [cursorPos, setCursorPos] = useState<CursorPos>({ x: 0, y: 0, visible: false, clicking: false });
   const [selectedCableId, setSelectedCableId] = useState<string | null>(null);
+  const cableDetailsRef = useRef<HTMLDivElement>(null);
+  const scrollDetailsIntoView = useRef(false);
   const [activeTab, setActiveTab] = useState("input");
   const [contextCableId, setContextCableId] = useState<string | null>(null);
   const [cableDialogOpen, setCableDialogOpen] = useState(false);
@@ -181,6 +184,13 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
     }
   }, [cables, contextCableId]);
 
+  useEffect(() => {
+    if (!scrollDetailsIntoView.current || !selectedCableId) return;
+    if (!cables.some(c => c.id === selectedCableId)) return;
+    scrollDetailsIntoView.current = false;
+    cableDetailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [selectedCableId, cables]);
+
   // Sync mainSpliceName when mode changes
   useEffect(() => {
     const stored = localStorage.getItem(`spliceName-${mode}`) ?? "Main";
@@ -236,14 +246,28 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
   }, [cables, contextCableId, mainSpliceName]);
 
   const createCableMutation = useMutation({
-    mutationFn: async (data: InsertCable) => {
-      return await apiRequest("POST", cablesEndpoint, data);
+    mutationFn: async ({ spliceCircuitIds: _spliceCircuitIds, ...data }: CableFormSubmit) => {
+      const res = await apiRequest("POST", cablesEndpoint, data);
+      return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: async (newCable: Cable & { circuitIds?: string[] }, variables: CableFormSubmit) => {
+      if (newCable?.id) {
+        const { circuitIds: _circuitIds, ...cable } = newCable;
+        queryClient.setQueryData<Cable[]>([cablesEndpoint], (current = []) =>
+          current.some(c => c.id === cable.id) ? current : [...current, cable]
+        );
+        setSelectedCableId(newCable.id);
+        setActiveTab("input");
+        scrollDetailsIntoView.current = true;
+      }
       queryClient.invalidateQueries({ queryKey: [cablesEndpoint] });
       queryClient.invalidateQueries({ queryKey: [circuitsEndpoint] });
       setCableDialogOpen(false);
       toast({ title: "Cable created successfully" });
+      if (newCable?.id && variables.spliceCircuitIds?.length) {
+        const { circuitIds: _circuitIds, ...cable } = newCable;
+        await spliceNewCableCircuits(cable, variables.spliceCircuitIds, apiMode);
+      }
     },
     onError: (error: any) => {
       const errorMessage = error?.message || "Failed to create cable";
@@ -444,9 +468,10 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
     input.click();
   };
 
-  const handleCableSubmit = (data: InsertCable) => {
+  const handleCableSubmit = (data: CableFormSubmit) => {
     if (editingCable) {
-      updateCableMutation.mutate({ id: editingCable.id, data });
+      const { spliceCircuitIds: _spliceCircuitIds, ...cableData } = data;
+      updateCableMutation.mutate({ id: editingCable.id, data: cableData });
     } else if (contextCableId) {
       // In a sub-splice context, every new cable — Feed or Distribution —
       // belongs to this sub-splice, so tie it to the context cable.
@@ -1291,7 +1316,7 @@ export default function CopperHome({ mode, setMode }: { mode: "fiber" | "copper"
               </div>
             </div>
 
-              <div>
+              <div ref={cableDetailsRef}>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between gap-4 py-3">
                     <HelpTip text="Details for the selected cable including type, pair count, and circuit assignments." enabled={helpMode} side="bottom">
