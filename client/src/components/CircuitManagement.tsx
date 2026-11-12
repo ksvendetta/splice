@@ -1,6 +1,6 @@
 import { Fragment, useState, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Circuit, Cable, InsertCircuit } from "@shared/schema";
+import { Circuit, Cable, InsertCircuit, parseCircuitIdParts } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,8 @@ import { CropDialog } from "./CameraCaptureDialog";
 import { normalizeCircuitId } from "@/lib/circuitIdUtils";
 import { HelpTip } from "@/components/HelpTip";
 import { setCircuitSpliced } from "@/lib/spliceCircuit";
+import { RingMarks } from "@/components/MicroFiberBadge";
+import { MICRO_TUBE_SIZE, getMicroRingCount, getMicroStrandColor, getMicroTubeColor, getMicroTubeNumber, microCellStyle } from "@/lib/microFiber";
 
 interface CircuitManagementProps {
   cable: Cable;
@@ -44,6 +46,39 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
   const [cameraImage, setCameraImage] = useState<string>("");
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  // Micro-fiber colour coding is a property of THIS cable (set in Add/Edit Cable),
+  // not a view mode, so there is nothing to toggle here.
+  const isMicro = mode === "fiber" && cable.microFiber === 1;
+
+  // A circuit that crosses a tube boundary is shown as one row per tube, so each
+  // row groups under the tube it actually belongs to. Display only - the stored
+  // circuit record is left untouched.
+  const splitCircuitByTube = (circuit: Circuit) => {
+    const whole = [{ fiberStart: circuit.fiberStart, fiberEnd: circuit.fiberEnd, circuitId: circuit.circuitId }];
+    let prefix: string;
+    let rangeStart: number;
+    try {
+      const parts = parseCircuitIdParts(circuit.circuitId);
+      prefix = parts.prefix;
+      rangeStart = parts.rangeStart;
+    } catch {
+      return whole; // IDs we cannot parse stay as a single row
+    }
+    const segments: { fiberStart: number; fiberEnd: number; circuitId: string }[] = [];
+    let fiber = circuit.fiberStart;
+    while (fiber <= circuit.fiberEnd) {
+      const tubeEnd = getMicroTubeNumber(fiber) * MICRO_TUBE_SIZE;
+      const segEnd = Math.min(tubeEnd, circuit.fiberEnd);
+      segments.push({
+        fiberStart: fiber,
+        fiberEnd: segEnd,
+        circuitId: `${prefix},${rangeStart + (fiber - circuit.fiberStart)}-${rangeStart + (segEnd - circuit.fiberStart)}`,
+      });
+      fiber = segEnd + 1;
+    }
+    return segments.length > 1 ? segments : whole;
+  };
 
   const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -487,7 +522,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
     color: color.textColor
   });
 
-  const getColorForNumber = (num: number) => {
+  const getColorForNumber = (num: number, kind: "ribbon" | "strand" = "strand") => {
     if (mode === 'copper') {
       if (num < 1) {
         console.error(`Invalid pair/binder number: ${num}`);
@@ -499,6 +534,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
         console.error(`Invalid fiber/ribbon number: ${num}`);
         return fiberColors[0]; // Default to blue
       }
+      if (isMicro) return kind === "ribbon" ? getMicroTubeColor(num) : getMicroStrandColor(num);
       return fiberColors[(num - 1) % 12];
     }
   };
@@ -508,17 +544,22 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
     return /^[A-Za-z]$/.test(prefix);
   };
 
-  const getRibbonAndStrandDisplay = (fiberStart: number, fiberEnd: number, ribbonSize: number) => {
+  const getRibbonAndStrandDisplay = (fiberStart: number, fiberEnd: number, ribbonSizeParam: number) => {
+    // Ribbons are always 12 wide. On a micro cable the STRAND number counts
+    // 36 to a tube instead, which is what the ring marks and the fill refer to.
+    const ribbonSize = ribbonSizeParam;
+    const strandSize = isMicro ? MICRO_TUBE_SIZE : ribbonSizeParam;
+    const strandOf = (fiber: number) => ((fiber - 1) % strandSize) + 1;
     const startRibbon = Math.ceil(fiberStart / ribbonSize);
     const endRibbon = Math.ceil(fiberEnd / ribbonSize);
 
-    const startStrand = ((fiberStart - 1) % ribbonSize) + 1;
-    const endStrand = ((fiberEnd - 1) % ribbonSize) + 1;
+    const startStrand = strandOf(fiberStart);
+    const endStrand = strandOf(fiberEnd);
 
     const containerLabel = mode === 'copper' ? 'B' : 'R'; // Binder vs Ribbon
 
     const ColoredRibbon = ({ num }: { num: number }) => {
-      const color = getColorForNumber(num);
+      const color = getColorForNumber(num, "ribbon");
 
       // For copper mode, use striped gradient for binder labels with proper text contrast
       if (mode === 'copper') {
@@ -544,7 +585,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
     };
 
     const ColoredStrand = ({ num }: { num: number }) => {
-      const color = getColorForNumber(num);
+      const color = getColorForNumber(num, "strand");
 
       // For copper mode, use striped gradient with proper text contrast
       if (mode === 'copper') {
@@ -559,11 +600,12 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
           </span>
         );
       } else {
-        // Fiber mode - use original solid color with Tailwind classes
+        // Fiber mode - solid colour, plus the black ring marks on a micro cable
         const fiberColor = color as { bg: string; text: string };
         return (
-          <span className={`inline-block px-2 py-0.5 rounded border border-black ${fiberColor.bg} ${fiberColor.text} font-mono font-semibold text-xs`}>
+          <span className={`inline-flex items-center px-2 py-0.5 rounded border border-black ${fiberColor.bg} ${fiberColor.text} font-mono font-semibold text-xs`}>
             {num}
+            {isMicro && <RingMarks count={getMicroRingCount(num)} />}
           </span>
         );
       }
@@ -585,9 +627,9 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
       const parts = [];
       
       // Check if we start with a partial ribbon
-      const startsWithPartialRibbon = startStrand !== 1;
+      const startsWithPartialRibbon = ((fiberStart - 1) % ribbonSize) !== 0;
       // Check if we end with a partial ribbon
-      const endsWithPartialRibbon = endStrand !== ribbonSize;
+      const endsWithPartialRibbon = (fiberEnd % ribbonSize) !== 0;
       
       // If no partial ribbons, use compact ribbon range format
       if (!startsWithPartialRibbon && !endsWithPartialRibbon) {
@@ -621,7 +663,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
             <span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
             <ColoredStrand num={startStrand} />
             <span>-</span>
-            <ColoredStrand num={ribbonSize} />
+            <ColoredStrand num={strandOf(startRibbon * ribbonSize)} />
           </span>
         );
       }
@@ -637,9 +679,9 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
             <span key={`full-${r}`} className="flex items-center gap-1">
               <ColoredRibbon num={r} />
               <span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
-              <ColoredStrand num={1} />
+              <ColoredStrand num={strandOf((r - 1) * ribbonSize + 1)} />
               <span>-</span>
-              <ColoredStrand num={ribbonSize} />
+              <ColoredStrand num={strandOf(r * ribbonSize)} />
             </span>
           );
         }
@@ -651,7 +693,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
           <span key={`end-${endRibbon}`} className="flex items-center gap-1">
             <ColoredRibbon num={endRibbon} />
             <span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
-            <ColoredStrand num={1} />
+            <ColoredStrand num={strandOf((endRibbon - 1) * ribbonSize + 1)} />
             <span>-</span>
             <ColoredStrand num={endStrand} />
           </span>
@@ -808,25 +850,34 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
               </TableHeader>
               <TableBody>
                 {circuits.map((circuit, index) => {
-                  const ribbonDisplay = getRibbonAndStrandDisplay(
-                    circuit.fiberStart,
-                    circuit.fiberEnd,
-                    cable.ribbonSize
-                  );
                   const isEditing = editingCircuitId === circuit.id;
                   const isDeadCircuit = isDeadCircuitId(circuit.circuitId);
                   const columnCount = cable.type === "Distribution" && !isContextFeed ? 5 : 4;
+                  // While editing, keep it as one row so the input edits the whole circuit.
+                  const tubeSegments = isMicro && !isEditing
+                    ? splitCircuitByTube(circuit)
+                    : [{ fiberStart: circuit.fiberStart, fiberEnd: circuit.fiberEnd, circuitId: circuit.circuitId }];
 
                   return (
                     <Fragment key={`${circuit.id}-with-insert`}>
                     {index === 0 && renderInsertCircuitRow(0, circuit.id, "before", columnCount)}
+                    {tubeSegments.map((seg, segIdx) => {
+                      const isFirstSeg = segIdx === 0;
+                      const segSuffix = isFirstSeg ? "" : `-seg-${segIdx}`;
+                      const ribbonDisplay = getRibbonAndStrandDisplay(
+                        seg.fiberStart,
+                        seg.fiberEnd,
+                        cable.ribbonSize
+                      );
+                      return (
                     <TableRow
-                      key={circuit.id}
+                      key={`${circuit.id}-seg-${segIdx}`}
                       className={isDeadCircuit ? "bg-red-50/80 hover:bg-red-100/80 dark:bg-red-950/20 dark:hover:bg-red-950/30" : undefined}
-                      data-testid={`row-circuit-${circuit.id}`}
+                      data-testid={`row-circuit-${circuit.id}${segSuffix}`}
                     >
                       {cable.type === "Distribution" && !isContextFeed && (
                         <TableCell>
+                          {isFirstSeg && (
                           <HelpTip text="Check to splice this circuit to the feed cable. Matches fibers by position." enabled={helpMode} side="right">
                             <span className="inline-flex">
                               <Checkbox
@@ -837,6 +888,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                               />
                             </span>
                           </HelpTip>
+                          )}
                         </TableCell>
                       )}
                       <TableCell className="font-mono text-sm" data-testid={`text-circuit-id-${circuit.id}`}>
@@ -854,7 +906,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                           />
                         ) : (
                           <span className="inline-flex items-center gap-2">
-                            <span>{circuit.circuitId}</span>
+                            <span>{seg.circuitId}</span>
                             {isDeadCircuit && (
                               <Badge variant="destructive" className="px-1.5 py-0 text-[10px] leading-4">
                                 Dead
@@ -863,15 +915,19 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="font-mono text-sm" data-testid={`text-fiber-range-${circuit.id}`}>
+                      <TableCell
+                        className="font-mono text-sm"
+                        style={isMicro ? microCellStyle(getMicroTubeNumber(seg.fiberStart)) : undefined}
+                        data-testid={`text-fiber-range-${circuit.id}${segSuffix}`}
+                      >
                         {ribbonDisplay}
                       </TableCell>
-                      <TableCell className="text-sm" data-testid={`text-fiber-count-${circuit.id}`}>
-                        {circuit.fiberEnd - circuit.fiberStart + 1}
+                      <TableCell className="text-sm" data-testid={`text-fiber-count-${circuit.id}${segSuffix}`}>
+                        {seg.fiberEnd - seg.fiberStart + 1}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          {isEditing ? (
+                          {!isFirstSeg ? null : isEditing ? (
                             <>
                               <Button
                                 size="icon"
@@ -941,6 +997,8 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                         </div>
                       </TableCell>
                     </TableRow>
+                      );
+                    })}
                     {renderInsertCircuitRow(index + 1, circuit.id, "after", columnCount)}
                     </Fragment>
                   );

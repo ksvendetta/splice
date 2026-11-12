@@ -32,6 +32,8 @@ import { UndoButton } from "@/components/UndoButton";
 import { HistoryButton } from "@/components/HistoryButton";
 import { QrShareButton } from "@/components/QrShareButton";
 import { SpliceSortHeader, type SpliceSortMode } from "@/components/SpliceSortHeader";
+import { RingMarks } from "@/components/MicroFiberBadge";
+import { MICRO_TUBE_SIZE, getMicroRingCount, getMicroStrandColor, getMicroTubeNumber } from "@/lib/microFiber";
 import { Plus, Cable as CableIcon, Workflow, Save, RotateCcw, Edit2, Check, X, Trash2, Layers, Home as HomeIcon, Phone, Sparkles, HelpCircle, Play } from "lucide-react";
 import { HelpTip } from "@/components/HelpTip";
 import { TutorialCursor } from "@/components/TutorialCursor";
@@ -81,6 +83,10 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
   const cableDetailsRef = useRef<HTMLDivElement>(null);
   const scrollDetailsIntoView = useRef(false);
   const [activeTab, setActiveTab] = useState("input");
+  // Splice tables open as fullscreen dialogs, launched from the chips below the
+  // cable list - same interaction model as the Android build.
+  const [spliceMappingCableId, setSpliceMappingCableId] = useState<string | null>(null);
+  const [spliceMappingType, setSpliceMappingType] = useState<"dist" | "feed" | "prefix">("dist");
   const [contextCableId, setContextCableId] = useState<string | null>(null);
   const [cableDialogOpen, setCableDialogOpen] = useState(false);
   const [editingCable, setEditingCable] = useState<Cable | null>(null);
@@ -551,6 +557,11 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
   // that acts as the source inside its sub-splice. No generic "f1" aliasing.
   const displayName = (cable: Cable) => cable.name;
 
+  // Whether a whole column of a splice table belongs to a micro-fiber cable,
+  // which decides if its header reads "(Tube) Ribbon".
+  const sideIsMicro = (list: Circuit[], side: "feed" | "dist") =>
+    list.some((c) => cables.find((x) => x.id === (side === "feed" ? c.feedCableId : c.cableId))?.microFiber === 1);
+
   const getCircuitRangeStart = (circuitId: string): number => {
     try {
       return parseCircuitIdParts(circuitId).rangeStart;
@@ -881,102 +892,77 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
 
               return (
                 <div className="space-y-3">
-                  <TabsList data-testid="tabs-main" className="flex h-auto min-h-10 w-full flex-wrap items-center justify-start gap-2 overflow-hidden bg-transparent p-0">
-                    <HelpTip text="View and manage all cables in this splice. Add feed and distribution cables here." enabled={helpMode} side="bottom">
-                      <TabsTrigger value="input" data-testid="tab-input-data">
-                        <CableIcon className="h-4 w-4 mr-2" />
-                        Cables
-                      </TabsTrigger>
-                    </HelpTip>
-                    <HelpTip text="View splice mapping grouped by circuit ID or by distribution cable." enabled={helpMode} side="bottom">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => hasSpliceMapping && setActiveTab(firstSpliceTab)}
-                        disabled={!hasSpliceMapping}
-                        className={`h-9 px-3 ${isSpliceMappingActive ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
-                        data-testid="tab-splice-mapping"
-                      >
-                        <Layers className="h-4 w-4 mr-2" />
-                        Splice Mapping
-                      </Button>
-                    </HelpTip>
+                  <TabsList data-testid="tabs-main" className="h-auto min-h-10 w-full max-w-full items-end justify-start gap-2 overflow-x-auto bg-transparent p-0 pb-1">
+                    {prefixArray.length > 0 && (
+                      <HelpTip text="View splice details grouped by circuit ID prefix. Each chip opens the splices sharing that prefix." enabled={helpMode} side="bottom">
+                        <div className="inline-flex flex-col">
+                          <div className="text-center border-x-2 border-border bg-muted/30 px-6 py-1 rounded-t mb-2">
+                            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">
+                              Splice by ID
+                            </h3>
+                          </div>
+                          <div className="inline-flex gap-1">
+                            {prefixArray.map(prefix => (
+                              <Button
+                                key={`prefix-${prefix}`}
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="gap-1"
+                                onClick={() => { setSpliceMappingCableId(prefix); setSpliceMappingType("prefix"); }}
+                                data-testid={`tab-prefix-splice-${prefix}`}
+                              >
+                                <Layers className="h-4 w-4" />
+                                {prefix}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      </HelpTip>
+                    )}
+
+                    {(distributionCables.length > 0 || feedCables.length > 0) && (
+                      <HelpTip text="View splice details organized by cable. Each chip opens that cable's splice mapping." enabled={helpMode} side="bottom">
+                        <div className="inline-flex flex-col">
+                          <div className="text-center border-x-2 border-border bg-muted/30 px-6 py-1 rounded-t mb-2">
+                            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">
+                              Splice by Cable
+                            </h3>
+                          </div>
+                          <div className="inline-flex gap-1">
+                            {distributionCables.map((distCable) => (
+                              <Button
+                                key={distCable.id}
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="gap-1"
+                                onClick={() => { setSpliceMappingCableId(distCable.id); setSpliceMappingType("dist"); }}
+                                data-testid={`tab-splice-${distCable.id}`}
+                              >
+                                <CableIcon className="h-4 w-4 text-sky-400" />
+                                {distCable.name}
+                              </Button>
+                            ))}
+                            {feedCables.map((feedCable) => (
+                              <Button
+                                key={`feed-${feedCable.id}`}
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="gap-1"
+                                onClick={() => { setSpliceMappingCableId(feedCable.id); setSpliceMappingType("feed"); }}
+                                data-testid={`tab-feed-splice-${feedCable.id}`}
+                              >
+                                <CableIcon className="h-4 w-4 text-green-600 dark:text-green-400" />
+                                {displayName(feedCable)}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      </HelpTip>
+                    )}
                   </TabsList>
-
-                  {isSpliceMappingActive && hasSpliceMapping && (
-                    <div className="space-y-3 border-t pt-3">
-                      {prefixArray.length > 0 && (
-                        <HelpTip text="View splice details grouped by circuit ID prefix. Each tab shows circuits sharing the same prefix." enabled={helpMode} side="bottom">
-                          <div className="min-w-0 max-w-full">
-                            <div className="mb-2 border-x-2 border-border bg-muted/30 px-6 py-1 text-center">
-                              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">
-                                Splice by ID
-                              </h3>
-                            </div>
-                            <div className="flex h-auto max-w-full flex-wrap justify-start gap-1">
-                              {prefixArray.map(prefix => (
-                                <Button
-                                  key={`prefix-${prefix}`}
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setActiveTab(`prefix-splice-${prefix}`)}
-                                  className={`h-9 px-3 ${activeTab === `prefix-splice-${prefix}` ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
-                                  data-testid={`tab-prefix-splice-${prefix}`}
-                                >
-                                  <Layers className="h-4 w-4 mr-2" />
-                                  {prefix}
-                                </Button>
-                              ))}
-                            </div>
-                          </div>
-                        </HelpTip>
-                      )}
-
-                      {(feedCables.length > 0 || distributionCables.length > 0) && (
-                        <HelpTip text="View splice details organized by cable. Feed cable tabs list every splice fed by that cable; distribution cable tabs show that cable's splice mapping." enabled={helpMode} side="bottom">
-                          <div className="min-w-0 max-w-full">
-                            <div className="mb-2 w-fit border-x-2 border-border bg-muted/30 px-6 py-1 text-center">
-                              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">
-                                Splice by Cable
-                              </h3>
-                            </div>
-                            <div className="flex h-auto max-w-full flex-wrap justify-start gap-1">
-                              {distributionCables.map((distCable) => (
-                                <Button
-                                  key={distCable.id}
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setActiveTab(`splice-${distCable.id}`)}
-                                  className={`h-9 px-3 ${activeTab === `splice-${distCable.id}` ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
-                                  data-testid={`tab-splice-${distCable.id}`}
-                                >
-                                  <CableIcon className="h-4 w-4 mr-2 text-sky-400" />
-                                  {distCable.name}
-                                </Button>
-                              ))}
-                              {feedCables.map((feedCable) => (
-                                <Button
-                                  key={`feed-${feedCable.id}`}
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setActiveTab(`feed-splice-${feedCable.id}`)}
-                                  className={`h-9 px-3 ${activeTab === `feed-splice-${feedCable.id}` ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
-                                  data-testid={`tab-feed-splice-${feedCable.id}`}
-                                >
-                                  <CableIcon className="h-4 w-4 mr-2 text-green-600 dark:text-green-400" />
-                                  {displayName(feedCable)}
-                                </Button>
-                              ))}
-                            </div>
-                          </div>
-                        </HelpTip>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             })()}
@@ -1166,11 +1152,11 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                             <span className="text-muted-foreground">Cable Size:</span>
                             {editingSize ? (
                               <>
-                                <input
+                                <Input
                                   type="number"
                                   value={tempSize}
                                   onChange={(e) => setTempSize(parseInt(e.target.value) || 0)}
-                                  className="ml-2 w-20 px-2 py-1 border rounded text-sm font-mono"
+                                  className="ml-2 h-8 w-24 px-2 py-1 text-sm font-mono"
                                   data-testid="input-edit-size"
                                   autoFocus
                                   min="12"
@@ -1223,7 +1209,32 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                               </>
                             )}
                           </div>
+                          {mode === "fiber" && (
+                            <div className="flex items-center gap-2">
+                              <Label htmlFor="micro-fiber-cable-toggle" className="text-muted-foreground">Micro Fiber:</Label>
+                              <Switch
+                                id="micro-fiber-cable-toggle"
+                                checked={selectedCable.microFiber === 1}
+                                onCheckedChange={(checked) => {
+                                  updateCableMutation.mutate({
+                                    id: selectedCable.id,
+                                    data: {
+                                      name: selectedCable.name,
+                                      fiberCount: selectedCable.fiberCount,
+                                      type: selectedCable.type as "Feed" | "Distribution",
+                                      microFiber: checked ? 1 : 0,
+                                    },
+                                  });
+                                }}
+                                data-testid="switch-micro-fiber-cable"
+                              />
+                              {selectedCable.microFiber === 1 && (
+                                <span className="text-xs text-muted-foreground">36/tube · {Math.ceil(selectedCable.fiberCount / MICRO_TUBE_SIZE)} tubes</span>
+                              )}
+                            </div>
+                          )}
                         </div>
+
 
                         <CircuitManagement cable={selectedCable} mode={mode} isContextFeed={contextCableId !== null && selectedCable?.id === contextCableId} helpMode={helpMode} />
                       </div>
@@ -1265,20 +1276,45 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
               { name: "green", bg: "bg-green-600", text: "text-white", colorClass: "text-green-600" },
               { name: "brown", bg: "bg-amber-700", text: "text-white", colorClass: "text-amber-700" },
               { name: "slate", bg: "bg-slate-500", text: "text-white", colorClass: "text-slate-500" },
-              { name: "white", bg: "bg-white", text: "text-black", colorClass: "text-slate-700" },
+              { name: "white", bg: "bg-white", text: "text-black", colorClass: "text-black", ribbonBg: "bg-white", ribbonText: "text-black", ribbonBorder: "border-black" },
               { name: "red", bg: "bg-red-600", text: "text-white", colorClass: "text-red-600" },
-              { name: "black", bg: "bg-black", text: "text-white", colorClass: "text-slate-900" },
+              { name: "black", bg: "bg-black", text: "text-white", colorClass: "text-gray-400", ribbonBg: "bg-black", ribbonText: "text-gray-400", ribbonBorder: "border-black" },
               { name: "yellow", bg: "bg-yellow-400", text: "text-black", colorClass: "text-yellow-500" },
               { name: "violet", bg: "bg-purple-600", text: "text-white", colorClass: "text-purple-600" },
               { name: "pink", bg: "bg-pink-500", text: "text-white", colorClass: "text-pink-500" },
               { name: "aqua", bg: "bg-cyan-400", text: "text-black", colorClass: "text-cyan-500" },
             ];
             
-            const ribbonSize = 12;
-            const getRibbonNumber = (fiber: number) => Math.ceil(fiber / ribbonSize);
-            const getFiberPositionInRibbon = (fiber: number) => ((fiber - 1) % ribbonSize) + 1;
-            const getColorForStrand = (strand: number) => fiberColors[(strand - 1) % 12];
+            // Micro-fiber is a property of the CABLE, not a view mode: a micro cable counts
+            // 36 to a tube, a standard cable 12 to a ribbon, so each side of a splice row
+            // is measured and coloured by its own cable.
+            const getRibbonNumber = (fiber: number, unit: number = 12) => Math.ceil(fiber / unit);
+            const getFiberPositionInRibbon = (fiber: number, unit: number = 12) => ((fiber - 1) % unit) + 1;
+            const getColorForStrand = (strand: number, micro = false) => micro ? getMicroStrandColor(strand) : fiberColors[(strand - 1) % 12];
             const getColorForRibbon = (ribbon: number) => fiberColors[(ribbon - 1) % 12];
+            // Outline-style ribbon chip: tinted border + text, with solid fills only
+            // for white and black, which would otherwise be unreadable.
+            const ribbonBadge = (color: { colorClass: string; ribbonBg?: string; ribbonText?: string; ribbonBorder?: string }, label: string) => {
+              if (color.ribbonBg) {
+                return <span className={`inline-block px-0.5 rounded border ${color.ribbonBorder} ${color.ribbonBg} ${color.ribbonText} font-mono font-semibold text-xs`}>{label}</span>;
+              }
+              return <span className={`inline-block px-0.5 rounded border font-mono font-semibold text-xs ${color.colorClass}`} style={{ borderColor: 'currentColor' }}>{label}</span>;
+            };
+              // Tube chip shown beside the ribbon on a micro cable. Tube N shares ribbon
+              // N's colour, so the two read as one code.
+              const tubeBadge = (micro: boolean, fiber: number) => {
+                if (!micro) return null;
+                const tube = getMicroTubeNumber(fiber);
+                return <span className="mr-2">{ribbonBadge(getColorForRibbon(tube), `(T${tube})`)}</span>;
+              };
+            const StrandBadge = ({ n, micro }: { n: number; micro: boolean }) => {
+              const c = getColorForStrand(n, micro);
+              return (
+                <span className={`inline-flex items-center px-0.5 rounded border border-black ${c.bg} ${c.text} font-mono font-semibold text-xs`}>
+                  {n}{micro && <RingMarks count={getMicroRingCount(n)} />}
+                </span>
+              );
+            };
             
             return prefixes.map(prefix => {
               // Row order follows the per-table sort choice (ribbon or circuit ID)
@@ -1290,6 +1326,12 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
               let totalSpliceRows = 0;
               console.log(`[SPLICE COUNT] Prefix: ${prefix}, Circuits:`, prefixCircuits.length);
               prefixCircuits.forEach((circuit, idx) => {
+                const feedCableUnits = circuit.feedCableId ? cables.find((c) => c.id === circuit.feedCableId) : undefined;
+                const distCableUnits = cables.find((c) => c.id === circuit.cableId);
+                const feedMicro = feedCableUnits?.microFiber === 1;
+                const distMicro = distCableUnits?.microFiber === 1;
+                const feedUnit = feedMicro ? MICRO_TUBE_SIZE : 12;
+                const distUnit = distMicro ? MICRO_TUBE_SIZE : 12;
                 const feedFiberStart = circuit.feedFiberStart || circuit.fiberStart;
                 const feedFiberEnd = circuit.feedFiberEnd || circuit.fiberEnd;
                 console.log(`[SPLICE COUNT] Circuit ${idx} (${circuit.circuitId}): feedFiberStart=${feedFiberStart}, feedFiberEnd=${feedFiberEnd}`);
@@ -1311,9 +1353,9 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                     const currentDistRibbon = getRibbonNumber(currentDistFiber);
                     const currentFeedRibbon = getRibbonNumber(currentFeedFiber);
 
-                    const distRibbonEnd = currentDistRibbon * ribbonSize;
+                    const distRibbonEnd = currentDistRibbon * 12;
                     const distSegmentEnd = Math.min(distRibbonEnd, distFiberEnd);
-                    const feedRibbonEnd = currentFeedRibbon * ribbonSize;
+                    const feedRibbonEnd = currentFeedRibbon * 12;
                     const feedSegmentEnd = Math.min(feedRibbonEnd, feedFiberEnd);
 
                     const distFiberCount = distSegmentEnd - currentDistFiber + 1;
@@ -1334,24 +1376,26 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
               console.log(`[SPLICE COUNT] Total rows for prefix ${prefix}: ${totalSpliceRows}`);
 
               return (
-                <TabsContent key={`prefix-${prefix}`} value={`prefix-splice-${prefix}`}>
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-center pl-16">{prefix} Splice</CardTitle>
-                    </CardHeader>
-                    <CardContent>
+                <Dialog
+                    key={`prefix-${prefix}`}
+                    open={spliceMappingCableId === prefix && spliceMappingType === "prefix"}
+                    onOpenChange={(open) => { if (!open) setSpliceMappingCableId(null); }}
+                  >
+                    <DialogContent fullscreen aria-describedby={undefined} className="px-1 pt-8 pb-12 gap-0 overflow-y-auto [&>button]:hidden flex flex-col">
+                      <DialogTitle className="text-center text-sm font-semibold pl-16">{prefix} Splice</DialogTitle>
+                      <div className="overflow-x-auto flex-1">
                       {prefixCircuits.length === 0 ? (
                         <div className="text-center py-12 text-muted-foreground" data-testid={`text-no-prefix-splices-${prefix}`}>
                           No circuits marked as spliced for {prefix}.
                         </div>
                       ) : (
                         <div className="w-full max-w-full overflow-x-auto rounded-md border">
-                          <Table className="min-w-max text-sm">
+                          <Table className="text-xs w-full">
                             <TableHeader>
                               <TableRow className="bg-muted/50">
-                                <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle w-16">#</TableHead>
-                                <TableHead colSpan={useRibbonView ? 2 : 3} rowSpan={2} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-1 px-2 align-middle">Feed</TableHead>
-                                <TableHead className="text-center py-1 px-2">
+                                <TableHead rowSpan={3} className="text-center font-semibold py-0 px-0.5 whitespace-nowrap align-middle w-16">#</TableHead>
+                                <TableHead colSpan={3} rowSpan={2} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-0 px-0.5 align-middle">Feed</TableHead>
+                                <TableHead className="text-center py-0 px-0.5">
                                   <div className="flex items-center justify-center gap-1">
                                     <Label htmlFor={`view-toggle-prefix-${prefix}`} className="text-xs text-muted-foreground">Strands</Label>
                                     <Switch
@@ -1364,24 +1408,24 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                     <Label htmlFor={`view-toggle-prefix-${prefix}`} className="text-xs text-muted-foreground">Ribbons</Label>
                                   </div>
                                 </TableHead>
-                                <TableHead colSpan={useRibbonView ? 2 : 3} rowSpan={2} className="text-center font-semibold bg-blue-100 dark:bg-blue-950/50 py-1 px-2 align-middle">Distribution</TableHead>
+                                <TableHead colSpan={3} rowSpan={2} className="text-center font-semibold bg-blue-100 dark:bg-blue-950/50 py-0 px-0.5 align-middle">Distribution</TableHead>
                               </TableRow>
                               <TableRow className="bg-muted/50">
-                                <TableHead className="text-center font-semibold py-1 px-2 whitespace-nowrap">Splices : {totalSpliceRows}</TableHead>
+                                <TableHead className="text-center font-semibold py-0 px-0.5 whitespace-nowrap">Splices : {totalSpliceRows}</TableHead>
                               </TableRow>
                               <TableRow>
-                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
-                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                                <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">Cable</TableHead>
+                                <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">
                                   <SpliceSortHeader
-                                    label="Ribbon"
+                                    label={sideIsMicro(prefixCircuits, "feed") ? "(Tube) Ribbon" : "Ribbon"}
                                     mode="feed"
                                     value={prefixSort}
                                     onChange={(mode) => setSpliceSort(prefixSortKey, mode)}
                                     idPrefix={prefixSortKey}
                                   />
                                 </TableHead>
-                                {!useRibbonView && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
-                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                                <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">Strand</TableHead>
+                                <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">
                                   <SpliceSortHeader
                                     label="Circuit"
                                     mode="circuit"
@@ -1390,17 +1434,17 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                     idPrefix={prefixSortKey}
                                   />
                                 </TableHead>
-                                {!useRibbonView && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
-                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                                <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">Strand</TableHead>
+                                <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">
                                   <SpliceSortHeader
-                                    label="Ribbon"
+                                    label={sideIsMicro(prefixCircuits, "dist") ? "(Tube) Ribbon" : "Ribbon"}
                                     mode="dist"
                                     value={prefixSort}
                                     onChange={(mode) => setSpliceSort(prefixSortKey, mode)}
                                     idPrefix={prefixSortKey}
                                   />
                                 </TableHead>
-                                <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
+                                <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">Cable</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -1425,6 +1469,12 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                 const allRows: React.ReactNode[] = [];
                                 let rowNumber = 0;
                                 prefixCircuits.forEach((circuit) => {
+                                  const feedCableUnits = circuit.feedCableId ? cables.find((c) => c.id === circuit.feedCableId) : undefined;
+                                  const distCableUnits = cables.find((c) => c.id === circuit.cableId);
+                                  const feedMicro = feedCableUnits?.microFiber === 1;
+                                  const distMicro = distCableUnits?.microFiber === 1;
+                                  const feedUnit = feedMicro ? MICRO_TUBE_SIZE : 12;
+                                  const distUnit = distMicro ? MICRO_TUBE_SIZE : 12;
                                     const distributionCable = cables.find((c) => c.id === circuit.cableId);
                                     const feedCable = circuit.feedCableId ? cables.find((c) => c.id === circuit.feedCableId) : undefined;
                                     const rowBgColor = pairBgColors.get(`${circuit.feedCableId ?? 'none'}:${circuit.cableId}`) ?? "bg-white dark:bg-background";
@@ -1433,8 +1483,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                       rowNumber++;
                                       allRows.push(
                                         <TableRow key={circuit.id} className={rowBgColor}>
-                                          <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                                          <TableCell colSpan={useRibbonView ? 4 : 6} className="text-center text-muted-foreground">
+                                          <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
+                                          <TableCell colSpan={6} className="text-center text-muted-foreground">
                                             Circuit {circuit.circuitId} - No feed cable selected.
                                           </TableCell>
                                         </TableRow>
@@ -1451,8 +1501,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                       rowNumber++;
                                       allRows.push(
                                         <TableRow key={circuit.id} className={rowBgColor}>
-                                          <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                                          <TableCell colSpan={useRibbonView ? 4 : 6} className="text-center text-muted-foreground">
+                                          <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
+                                          <TableCell colSpan={6} className="text-center text-muted-foreground">
                                             Circuit {circuit.circuitId} - Invalid format.
                                           </TableCell>
                                         </TableRow>
@@ -1467,8 +1517,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                       rowNumber++;
                                       allRows.push(
                                         <TableRow key={circuit.id} className={rowBgColor}>
-                                          <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                                          <TableCell colSpan={useRibbonView ? 4 : 6} className="text-center text-muted-foreground">
+                                          <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
+                                          <TableCell colSpan={6} className="text-center text-muted-foreground">
                                             Circuit {circuit.circuitId} - Invalid range.
                                           </TableCell>
                                         </TableRow>
@@ -1486,7 +1536,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                         rowNumber++;
                                         allRows.push(
                                           <TableRow key={circuit.id} className={rowBgColor}>
-                                            <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
+                                            <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
                                             <TableCell colSpan={4} className="text-center text-muted-foreground">
                                               Circuit {circuit.circuitId} - Invalid fiber positions.
                                             </TableCell>
@@ -1501,9 +1551,9 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                       while (currentDistFiber <= distFiberEnd) {
                                         const currentDistRibbon = getRibbonNumber(currentDistFiber);
                                         const currentFeedRibbon = getRibbonNumber(currentFeedFiber);
-                                        const distRibbonEnd = currentDistRibbon * ribbonSize;
+                                        const distRibbonEnd = currentDistRibbon * 12;
                                         const distSegmentEnd = Math.min(distRibbonEnd, distFiberEnd);
-                                        const feedRibbonEnd = currentFeedRibbon * ribbonSize;
+                                        const feedRibbonEnd = currentFeedRibbon * 12;
                                         const feedSegmentEnd = Math.min(feedRibbonEnd, feedFiberEnd);
                                         const distFiberCount = distSegmentEnd - currentDistFiber + 1;
                                         const feedFiberCount = feedSegmentEnd - currentFeedFiber + 1;
@@ -1511,39 +1561,47 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                         const fiberOffset = currentDistFiber - distFiberStart;
                                         const circuitStart = rangeStart + fiberOffset;
                                         const circuitEnd = circuitStart + segmentFiberCount - 1;
-                                        const distStrandStart = getFiberPositionInRibbon(currentDistFiber);
-                                        const distStrandEnd = getFiberPositionInRibbon(currentDistFiber + segmentFiberCount - 1);
-                                        const feedStrandStart = getFiberPositionInRibbon(currentFeedFiber);
-                                        const feedStrandEnd = getFiberPositionInRibbon(currentFeedFiber + segmentFiberCount - 1);
+                                        const distStrandStart = getFiberPositionInRibbon(currentDistFiber, distUnit);
+                                        const distStrandEnd = getFiberPositionInRibbon(currentDistFiber + segmentFiberCount - 1, distUnit);
+                                        const feedStrandStart = getFiberPositionInRibbon(currentFeedFiber, feedUnit);
+                                        const feedStrandEnd = getFiberPositionInRibbon(currentFeedFiber + segmentFiberCount - 1, feedUnit);
                                         const feedRibbonColor = getColorForRibbon(currentFeedRibbon);
                                         const distRibbonColor = getColorForRibbon(currentDistRibbon);
                                         rowNumber++;
                                         allRows.push(
                                           <TableRow key={`${circuit.id}-segment-${currentDistFiber}`} className={rowBgColor}>
-                                            <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                                            <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
-                                            <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">
-                                              <span className="inline-flex items-center gap-2">
-                                                <span className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedRibbonColor.bg} ${feedRibbonColor.text} font-mono font-semibold text-xs`}>R{currentFeedRibbon}</span><span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
-                                                <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(feedStrandStart).bg} ${getColorForStrand(feedStrandStart).text} font-mono font-semibold text-xs`}>{feedStrandStart}</span>
+                                            <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
+                                            <TableCell className="text-center font-mono py-0 px-0.5 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
+                                            <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">
+                                              <span className="inline-flex items-center justify-start min-w-[4.5rem]">
+                                                {tubeBadge(feedMicro, currentFeedFiber)}{ribbonBadge(feedRibbonColor, `R${currentFeedRibbon}`)}
+                                              </span>
+                                            </TableCell>
+                                            <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">
+                                              <span className="inline-flex items-center gap-0.5">
+                                                <StrandBadge n={feedStrandStart} micro={feedMicro} />
                                                 {feedStrandStart !== feedStrandEnd && <>
                                                   <span>-</span>
-                                                  <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(feedStrandEnd).bg} ${getColorForStrand(feedStrandEnd).text} font-mono font-semibold text-xs`}>{feedStrandEnd}</span>
+                                                  <StrandBadge n={feedStrandEnd} micro={feedMicro} />
                                                 </>}
                                               </span>
                                             </TableCell>
-                                            <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">{circuitPrefix},{circuitStart}-{circuitEnd}</TableCell>
-                                            <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">
-                                              <span className="inline-flex items-center gap-2">
-                                                <span className={`inline-block px-1.5 py-0.5 rounded border border-black ${distRibbonColor.bg} ${distRibbonColor.text} font-mono font-semibold text-xs`}>R{currentDistRibbon}</span><span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
-                                                <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(distStrandStart).bg} ${getColorForStrand(distStrandStart).text} font-mono font-semibold text-xs`}>{distStrandStart}</span>
+                                            <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">{circuitPrefix},{circuitStart}-{circuitEnd}</TableCell>
+                                            <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">
+                                              <span className="inline-flex items-center gap-0.5">
+                                                <StrandBadge n={distStrandStart} micro={distMicro} />
                                                 {distStrandStart !== distStrandEnd && <>
                                                   <span>-</span>
-                                                  <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(distStrandEnd).bg} ${getColorForStrand(distStrandEnd).text} font-mono font-semibold text-xs`}>{distStrandEnd}</span>
+                                                  <StrandBadge n={distStrandEnd} micro={distMicro} />
                                                 </>}
                                               </span>
                                             </TableCell>
-                                            <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
+                                            <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">
+                                              <span className="inline-flex items-center justify-start min-w-[4.5rem]">
+                                                {tubeBadge(distMicro, currentDistFiber)}{ribbonBadge(distRibbonColor, `R${currentDistRibbon}`)}
+                                              </span>
+                                            </TableCell>
+                                            <TableCell className="text-center font-mono py-0 px-0.5 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
                                           </TableRow>
                                         );
                                         currentDistFiber += segmentFiberCount;
@@ -1554,7 +1612,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                         rowNumber++;
                                         allRows.push(
                                           <TableRow key={circuit.id} className={rowBgColor}>
-                                            <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
+                                            <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
                                             <TableCell colSpan={6} className="text-center text-muted-foreground">
                                               Circuit {circuit.circuitId} - Invalid fiber positions.
                                             </TableCell>
@@ -1566,33 +1624,29 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                         const distFiber = circuit.fiberStart + i;
                                         const feedFiber = (circuit.feedFiberStart || circuit.fiberStart) + i;
                                         const distRibbon = getRibbonNumber(distFiber);
-                                        const distStrand = getFiberPositionInRibbon(distFiber);
+                                        const distStrand = getFiberPositionInRibbon(distFiber, distUnit);
                                         const feedRibbon = getRibbonNumber(feedFiber);
-                                        const feedStrand = getFiberPositionInRibbon(feedFiber);
+                                        const feedStrand = getFiberPositionInRibbon(feedFiber, feedUnit);
                                         const circuitNumber = rangeStart + i;
-                                        const feedColor = getColorForStrand(feedStrand);
-                                        const distColor = getColorForStrand(distStrand);
+                                        const feedColor = getColorForStrand(feedStrand, feedMicro);
+                                        const distColor = getColorForStrand(distStrand, distMicro);
                                         const feedRibbonColor = getColorForRibbon(feedRibbon);
                                         const distRibbonColor = getColorForRibbon(distRibbon);
                                         rowNumber++;
                                         allRows.push(
                                           <TableRow key={`${circuit.id}-fiber-${i}`} className={rowBgColor}>
-                                            <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                                            <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
-                                            <TableCell className="text-center py-1 px-2 whitespace-nowrap"><span className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedRibbonColor.bg} ${feedRibbonColor.text} font-mono font-semibold text-xs`}>R{feedRibbon}</span></TableCell>
-                                            <TableCell className="text-center py-1 px-2">
-                                              <div className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedColor.bg} ${feedColor.text} font-mono font-semibold text-xs`}>
-                                                {feedStrand}
-                                              </div>
+                                            <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
+                                            <TableCell className="text-center font-mono py-0 px-0.5 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
+                                            <TableCell className="text-center py-0 px-0.5 whitespace-nowrap">{tubeBadge(feedMicro, feedFiber)}{ribbonBadge(feedRibbonColor, `R${feedRibbon}`)}</TableCell>
+                                            <TableCell className="text-center py-0 px-0.5">
+                                              <StrandBadge n={feedStrand} micro={feedMicro} />
                                             </TableCell>
-                                            <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">{circuitPrefix},{circuitNumber}</TableCell>
-                                            <TableCell className="text-center py-1 px-2">
-                                              <div className={`inline-block px-1.5 py-0.5 rounded border border-black ${distColor.bg} ${distColor.text} font-mono font-semibold text-xs`}>
-                                                {distStrand}
-                                              </div>
+                                            <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">{circuitPrefix},{circuitNumber}</TableCell>
+                                            <TableCell className="text-center py-0 px-0.5">
+                                              <StrandBadge n={distStrand} micro={distMicro} />
                                             </TableCell>
-                                            <TableCell className="text-center py-1 px-2 whitespace-nowrap"><span className={`inline-block px-1.5 py-0.5 rounded border border-black ${distRibbonColor.bg} ${distRibbonColor.text} font-mono font-semibold text-xs`}>R{distRibbon}</span></TableCell>
-                                            <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
+                                            <TableCell className="text-center py-0 px-0.5 whitespace-nowrap">{tubeBadge(distMicro, distFiber)}{ribbonBadge(distRibbonColor, `R${distRibbon}`)}</TableCell>
+                                            <TableCell className="text-center font-mono py-0 px-0.5 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
                                           </TableRow>
                                         );
                                       }
@@ -1604,9 +1658,14 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                           </Table>
                         </div>
                       )}
-                    </CardContent>
-                  </Card>
-                </TabsContent>
+                    </div>
+                    <div className="flex justify-center py-2">
+                      <Button variant="destructive" size="sm" onClick={() => setSpliceMappingCableId(null)} className="px-6">
+                        Return
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               );
             });
           })()}
@@ -1624,6 +1683,12 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
             // Calculate total rows by matching the rendering logic exactly
             let totalSpliceRows = 0;
             cableSplicedCircuits.forEach((circuit) => {
+              const feedCableUnits = circuit.feedCableId ? cables.find((c) => c.id === circuit.feedCableId) : undefined;
+              const distCableUnits = cables.find((c) => c.id === circuit.cableId);
+              const feedMicro = feedCableUnits?.microFiber === 1;
+              const distMicro = distCableUnits?.microFiber === 1;
+              const feedUnit = feedMicro ? MICRO_TUBE_SIZE : 12;
+              const distUnit = distMicro ? MICRO_TUBE_SIZE : 12;
               const distFiberStart = circuit.fiberStart;
               const distFiberEnd = circuit.fiberEnd;
               const feedFiberStart = circuit.feedFiberStart || circuit.fiberStart;
@@ -1662,17 +1727,14 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
             });
             
             return (
-              <TabsContent key={distCable.id} value={`splice-${distCable.id}`}>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base font-bold text-center pl-16">
-                      {distCable.name}-{distCable.fiberCount}
-                      {parentCable && (
-                        <span className="ml-2 text-sm font-normal text-muted-foreground">(sub-splice from {displayName(parentCable)})</span>
-                      )}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
+              <Dialog
+                  key={distCable.id}
+                  open={spliceMappingCableId === distCable.id && spliceMappingType === "dist"}
+                  onOpenChange={(open) => { if (!open) setSpliceMappingCableId(null); }}
+                >
+                  <DialogContent fullscreen aria-describedby={undefined} className="px-1 pt-8 pb-12 gap-0 overflow-y-auto [&>button]:hidden flex flex-col">
+                    <DialogTitle className="text-center text-sm font-semibold pl-16">{distCable.name}-{distCable.fiberCount} {parentCable && ( <span className="ml-2 text-sm font-normal text-muted-foreground">(sub-splice from {displayName(parentCable)})</span> )}</DialogTitle>
+                    <div className="overflow-x-auto flex-1">
                     {circuitsLoading ? (
                       <div className="text-center py-12 text-muted-foreground">Loading circuits...</div>
                     ) : cableSplicedCircuits.length === 0 ? (
@@ -1681,12 +1743,12 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                       </div>
                     ) : (
                       <div className="w-full max-w-full overflow-x-auto rounded-md border">
-                        <Table className="min-w-max text-sm">
+                        <Table className="text-xs w-full">
                           <TableHeader>
                             <TableRow className="bg-muted/50">
-                              <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle w-16">#</TableHead>
-                              <TableHead colSpan={useRibbonView ? 2 : 3} rowSpan={2} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-1 px-2 align-middle">{parentCable ? `Source (${displayName(parentCable)})` : "Feed"}</TableHead>
-                              <TableHead className="text-center py-1 px-2">
+                              <TableHead rowSpan={3} className="text-center font-semibold py-0 px-0.5 whitespace-nowrap align-middle w-16">#</TableHead>
+                              <TableHead colSpan={3} rowSpan={2} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-0 px-0.5 align-middle">{parentCable ? `Source (${displayName(parentCable)})` : "Feed"}</TableHead>
+                              <TableHead className="text-center py-0 px-0.5">
                                 <div className="flex items-center justify-center gap-1">
                                   <Label htmlFor={`view-toggle-${distCable.id}`} className="text-xs text-muted-foreground">Strands</Label>
                                   <Switch
@@ -1699,24 +1761,24 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                   <Label htmlFor={`view-toggle-${distCable.id}`} className="text-xs text-muted-foreground">Ribbons</Label>
                                 </div>
                               </TableHead>
-                              <TableHead colSpan={useRibbonView ? 2 : 3} rowSpan={2} className="text-center font-semibold bg-blue-100 dark:bg-blue-950/50 py-1 px-2 align-middle">Distribution</TableHead>
+                              <TableHead colSpan={3} rowSpan={2} className="text-center font-semibold bg-blue-100 dark:bg-blue-950/50 py-0 px-0.5 align-middle">Distribution</TableHead>
                             </TableRow>
                             <TableRow className="bg-muted/50">
-                              <TableHead className="text-center font-semibold py-1 px-2 whitespace-nowrap">Splices : {totalSpliceRows}</TableHead>
+                              <TableHead className="text-center font-semibold py-0 px-0.5 whitespace-nowrap">Splices : {totalSpliceRows}</TableHead>
                             </TableRow>
                             <TableRow>
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                              <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">Cable</TableHead>
+                              <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">
                                 <SpliceSortHeader
-                                  label="Ribbon"
+                                  label={sideIsMicro(cableSplicedCircuits, "feed") ? "(Tube) Ribbon" : "Ribbon"}
                                   mode="feed"
                                   value={distSort}
                                   onChange={(mode) => setSpliceSort(distSortKey, mode)}
                                   idPrefix={distSortKey}
                                 />
                               </TableHead>
-                              {!useRibbonView && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                              <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">Strand</TableHead>
+                              <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">
                                 <SpliceSortHeader
                                   label="Circuit"
                                   mode="circuit"
@@ -1725,17 +1787,17 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                   idPrefix={distSortKey}
                                 />
                               </TableHead>
-                              {!useRibbonView && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                              <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">Strand</TableHead>
+                              <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">
                                 <SpliceSortHeader
-                                  label="Ribbon"
+                                  label={sideIsMicro(cableSplicedCircuits, "dist") ? "(Tube) Ribbon" : "Ribbon"}
                                   mode="dist"
                                   value={distSort}
                                   onChange={(mode) => setSpliceSort(distSortKey, mode)}
                                   idPrefix={distSortKey}
                                 />
                               </TableHead>
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
+                              <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">Cable</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -1744,6 +1806,12 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                               let prevCableKey = "";
                               let cableGroupIdx = -1;
                               return cableSplicedCircuits.flatMap((circuit) => {
+                                const feedCableUnits = circuit.feedCableId ? cables.find((c) => c.id === circuit.feedCableId) : undefined;
+                                const distCableUnits = cables.find((c) => c.id === circuit.cableId);
+                                const feedMicro = feedCableUnits?.microFiber === 1;
+                                const distMicro = distCableUnits?.microFiber === 1;
+                                const feedUnit = feedMicro ? MICRO_TUBE_SIZE : 12;
+                                const distUnit = distMicro ? MICRO_TUBE_SIZE : 12;
                                 const distributionCable = cables.find((c) => c.id === circuit.cableId);
                                 const feedCable = circuit.feedCableId ? cables.find((c) => c.id === circuit.feedCableId) : undefined;
 
@@ -1761,8 +1829,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                   rowNumber++;
                                   return [(
                                     <TableRow key={circuit.id} className={rowBgColor} data-testid={`row-spliced-circuit-${circuit.id}`}>
-                                      <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                                      <TableCell colSpan={useRibbonView ? 4 : 6} className="text-center text-muted-foreground">
+                                      <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
+                                      <TableCell colSpan={6} className="text-center text-muted-foreground">
                                         Circuit {circuit.circuitId} in {distributionCable?.name} - No feed cable selected. Please re-check the circuit.
                                       </TableCell>
                                     </TableRow>
@@ -1776,20 +1844,45 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                 { name: "green", bg: "bg-green-600", text: "text-white", colorClass: "text-green-600" },
                                 { name: "brown", bg: "bg-amber-700", text: "text-white", colorClass: "text-amber-700" },
                                 { name: "slate", bg: "bg-slate-500", text: "text-white", colorClass: "text-slate-500" },
-                                { name: "white", bg: "bg-white", text: "text-black", colorClass: "text-slate-700" },
+                                { name: "white", bg: "bg-white", text: "text-black", colorClass: "text-black", ribbonBg: "bg-white", ribbonText: "text-black", ribbonBorder: "border-black" },
                                 { name: "red", bg: "bg-red-600", text: "text-white", colorClass: "text-red-600" },
-                                { name: "black", bg: "bg-black", text: "text-white", colorClass: "text-slate-900" },
+                                { name: "black", bg: "bg-black", text: "text-white", colorClass: "text-gray-400", ribbonBg: "bg-black", ribbonText: "text-gray-400", ribbonBorder: "border-black" },
                                 { name: "yellow", bg: "bg-yellow-400", text: "text-black", colorClass: "text-yellow-500" },
                                 { name: "violet", bg: "bg-purple-600", text: "text-white", colorClass: "text-purple-600" },
                                 { name: "pink", bg: "bg-pink-500", text: "text-white", colorClass: "text-pink-500" },
                                 { name: "aqua", bg: "bg-cyan-400", text: "text-black", colorClass: "text-cyan-500" },
                               ];
                               
-                              const ribbonSize = 12;
-                              const getRibbonNumber = (fiber: number) => Math.ceil(fiber / ribbonSize);
-                              const getFiberPositionInRibbon = (fiber: number) => ((fiber - 1) % ribbonSize) + 1;
-                              const getColorForStrand = (strand: number) => fiberColors[(strand - 1) % 12];
+                              // Micro-fiber is a property of the CABLE, not a view mode: a micro cable counts
+                              // 36 to a tube, a standard cable 12 to a ribbon, so each side of a splice row
+                              // is measured and coloured by its own cable.
+                              const getRibbonNumber = (fiber: number, unit: number = 12) => Math.ceil(fiber / unit);
+                              const getFiberPositionInRibbon = (fiber: number, unit: number = 12) => ((fiber - 1) % unit) + 1;
+                              const getColorForStrand = (strand: number, micro = false) => micro ? getMicroStrandColor(strand) : fiberColors[(strand - 1) % 12];
                               const getColorForRibbon = (ribbon: number) => fiberColors[(ribbon - 1) % 12];
+                              // Outline-style ribbon chip: tinted border + text, with solid fills only
+                              // for white and black, which would otherwise be unreadable.
+                              const ribbonBadge = (color: { colorClass: string; ribbonBg?: string; ribbonText?: string; ribbonBorder?: string }, label: string) => {
+                                if (color.ribbonBg) {
+                                  return <span className={`inline-block px-0.5 rounded border ${color.ribbonBorder} ${color.ribbonBg} ${color.ribbonText} font-mono font-semibold text-xs`}>{label}</span>;
+                                }
+                                return <span className={`inline-block px-0.5 rounded border font-mono font-semibold text-xs ${color.colorClass}`} style={{ borderColor: 'currentColor' }}>{label}</span>;
+                              };
+                                // Tube chip shown beside the ribbon on a micro cable. Tube N shares ribbon
+                                // N's colour, so the two read as one code.
+                                const tubeBadge = (micro: boolean, fiber: number) => {
+                                  if (!micro) return null;
+                                  const tube = getMicroTubeNumber(fiber);
+                                  return <span className="mr-2">{ribbonBadge(getColorForRibbon(tube), `(T${tube})`)}</span>;
+                                };
+                              const StrandBadge = ({ n, micro }: { n: number; micro: boolean }) => {
+                                const c = getColorForStrand(n, micro);
+                                return (
+                                  <span className={`inline-flex items-center px-0.5 rounded border border-black ${c.bg} ${c.text} font-mono font-semibold text-xs`}>
+                                    {n}{micro && <RingMarks count={getMicroRingCount(n)} />}
+                                  </span>
+                                );
+                              };
                               
                               // Parse circuit ID to get the circuit numbers
                               const circuitIdParts = circuit.circuitId.split(',');
@@ -1802,8 +1895,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                   rowNumber++;
                                   return [(
                                     <TableRow key={circuit.id} className={rowBgColor} data-testid={`row-spliced-circuit-${circuit.id}`}>
-                                      <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                                      <TableCell colSpan={useRibbonView ? 4 : 6} className="text-center text-muted-foreground">
+                                      <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
+                                      <TableCell colSpan={6} className="text-center text-muted-foreground">
                                         Circuit {circuit.circuitId} in {distributionCable?.name} - Invalid circuit ID format.
                                       </TableCell>
                                     </TableRow>
@@ -1818,8 +1911,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                   rowNumber++;
                                   return [(
                                     <TableRow key={circuit.id} className={rowBgColor} data-testid={`row-spliced-circuit-${circuit.id}`}>
-                                      <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                                      <TableCell colSpan={useRibbonView ? 4 : 6} className="text-center text-muted-foreground">
+                                      <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
+                                      <TableCell colSpan={6} className="text-center text-muted-foreground">
                                         Circuit {circuit.circuitId} in {distributionCable?.name} - Invalid circuit number range.
                                       </TableCell>
                                     </TableRow>
@@ -1840,7 +1933,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                     rowNumber++;
                                     return [(
                                       <TableRow key={circuit.id} className={rowBgColor} data-testid={`row-spliced-circuit-${circuit.id}`}>
-                                        <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
+                                        <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
                                         <TableCell colSpan={4} className="text-center text-muted-foreground">
                                           Circuit {circuit.circuitId} in {distributionCable?.name} - Invalid fiber positions.
                                         </TableCell>
@@ -1855,9 +1948,9 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                     const currentDistRibbon = getRibbonNumber(currentDistFiber);
                                     const currentFeedRibbon = getRibbonNumber(currentFeedFiber);
                                     
-                                    const distRibbonEnd = currentDistRibbon * ribbonSize;
+                                    const distRibbonEnd = currentDistRibbon * 12;
                                     const distSegmentEnd = Math.min(distRibbonEnd, distFiberEnd);
-                                    const feedRibbonEnd = currentFeedRibbon * ribbonSize;
+                                    const feedRibbonEnd = currentFeedRibbon * 12;
                                     const feedSegmentEnd = Math.min(feedRibbonEnd, feedFiberEnd);
                                     
                                     const distFiberCount = distSegmentEnd - currentDistFiber + 1;
@@ -1868,10 +1961,10 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                     const circuitStart = rangeStart + fiberOffset;
                                     const circuitEnd = circuitStart + segmentFiberCount - 1;
                                     
-                                    const distStrandStart = getFiberPositionInRibbon(currentDistFiber);
-                                    const distStrandEnd = getFiberPositionInRibbon(currentDistFiber + segmentFiberCount - 1);
-                                    const feedStrandStart = getFiberPositionInRibbon(currentFeedFiber);
-                                    const feedStrandEnd = getFiberPositionInRibbon(currentFeedFiber + segmentFiberCount - 1);
+                                    const distStrandStart = getFiberPositionInRibbon(currentDistFiber, distUnit);
+                                    const distStrandEnd = getFiberPositionInRibbon(currentDistFiber + segmentFiberCount - 1, distUnit);
+                                    const feedStrandStart = getFiberPositionInRibbon(currentFeedFiber, feedUnit);
+                                    const feedStrandEnd = getFiberPositionInRibbon(currentFeedFiber + segmentFiberCount - 1, feedUnit);
                                     
                                     const feedRibbonColor = getColorForRibbon(currentFeedRibbon);
                                     const distRibbonColor = getColorForRibbon(currentDistRibbon);
@@ -1879,30 +1972,38 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                     rowNumber++;
                                     ribbonRows.push(
                                       <TableRow key={`${circuit.id}-segment-${currentDistFiber}`} className={rowBgColor} data-testid={`row-ribbon-${circuit.id}-${currentDistFiber}`}>
-                                        <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
-                                        <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">
-                                          <span className="inline-flex items-center gap-2">
-                                            <span className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedRibbonColor.bg} ${feedRibbonColor.text} font-mono font-semibold text-xs`}>R{currentFeedRibbon}</span><span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
-                                            <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(feedStrandStart).bg} ${getColorForStrand(feedStrandStart).text} font-mono font-semibold text-xs`}>{feedStrandStart}</span>
+                                        <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
+                                        <TableCell className="text-center font-mono py-0 px-0.5 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
+                                        <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">
+                                          <span className="inline-flex items-center justify-start min-w-[4.5rem]">
+                                            {tubeBadge(feedMicro, currentFeedFiber)}{ribbonBadge(feedRibbonColor, `R${currentFeedRibbon}`)}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">
+                                          <span className="inline-flex items-center gap-0.5">
+                                            <StrandBadge n={feedStrandStart} micro={feedMicro} />
                                             {feedStrandStart !== feedStrandEnd && <>
                                               <span>-</span>
-                                              <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(feedStrandEnd).bg} ${getColorForStrand(feedStrandEnd).text} font-mono font-semibold text-xs`}>{feedStrandEnd}</span>
+                                              <StrandBadge n={feedStrandEnd} micro={feedMicro} />
                                             </>}
                                           </span>
                                         </TableCell>
-                                        <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">{circuitPrefix},{circuitStart}-{circuitEnd}</TableCell>
-                                        <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">
-                                          <span className="inline-flex items-center gap-2">
-                                            <span className={`inline-block px-1.5 py-0.5 rounded border border-black ${distRibbonColor.bg} ${distRibbonColor.text} font-mono font-semibold text-xs`}>R{currentDistRibbon}</span><span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
-                                            <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(distStrandStart).bg} ${getColorForStrand(distStrandStart).text} font-mono font-semibold text-xs`}>{distStrandStart}</span>
+                                        <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">{circuitPrefix},{circuitStart}-{circuitEnd}</TableCell>
+                                        <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">
+                                          <span className="inline-flex items-center gap-0.5">
+                                            <StrandBadge n={distStrandStart} micro={distMicro} />
                                             {distStrandStart !== distStrandEnd && <>
                                               <span>-</span>
-                                              <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(distStrandEnd).bg} ${getColorForStrand(distStrandEnd).text} font-mono font-semibold text-xs`}>{distStrandEnd}</span>
+                                              <StrandBadge n={distStrandEnd} micro={distMicro} />
                                             </>}
                                           </span>
                                         </TableCell>
-                                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
+                                        <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">
+                                          <span className="inline-flex items-center justify-start min-w-[4.5rem]">
+                                            {tubeBadge(distMicro, currentDistFiber)}{ribbonBadge(distRibbonColor, `R${currentDistRibbon}`)}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="text-center font-mono py-0 px-0.5 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
                                       </TableRow>
                                     );
 
@@ -1919,7 +2020,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                     rowNumber++;
                                     return [(
                                       <TableRow key={circuit.id} className={rowBgColor} data-testid={`row-spliced-circuit-${circuit.id}`}>
-                                        <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
+                                        <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
                                         <TableCell colSpan={6} className="text-center text-muted-foreground">
                                           Circuit {circuit.circuitId} in {distributionCable?.name} - Invalid fiber positions.
                                         </TableCell>
@@ -1932,35 +2033,31 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                     const feedFiber = (circuit.feedFiberStart || circuit.fiberStart) + i;
                                     
                                     const distRibbon = getRibbonNumber(distFiber);
-                                    const distStrand = getFiberPositionInRibbon(distFiber);
+                                    const distStrand = getFiberPositionInRibbon(distFiber, distUnit);
                                     const feedRibbon = getRibbonNumber(feedFiber);
-                                    const feedStrand = getFiberPositionInRibbon(feedFiber);
+                                    const feedStrand = getFiberPositionInRibbon(feedFiber, feedUnit);
                                     
                                     const circuitNumber = rangeStart + i;
-                                    const feedColor = getColorForStrand(feedStrand);
-                                    const distColor = getColorForStrand(distStrand);
+                                    const feedColor = getColorForStrand(feedStrand, feedMicro);
+                                    const distColor = getColorForStrand(distStrand, distMicro);
                                     const feedRibbonColor = getColorForRibbon(feedRibbon);
                                     const distRibbonColor = getColorForRibbon(distRibbon);
                                     
                                     rowNumber++;
                                     fiberRows.push(
                                       <TableRow key={`${circuit.id}-fiber-${i}`} className={rowBgColor} data-testid={`row-fiber-${circuit.id}-${i}`}>
-                                        <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
-                                        <TableCell className="text-center py-1 px-2 whitespace-nowrap"><span className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedRibbonColor.bg} ${feedRibbonColor.text} font-mono font-semibold text-xs`}>R{feedRibbon}</span></TableCell>
-                                        <TableCell className="text-center py-1 px-2">
-                                          <div className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedColor.bg} ${feedColor.text} font-mono font-semibold text-xs`}>
-                                            {feedStrand}
-                                          </div>
+                                        <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
+                                        <TableCell className="text-center font-mono py-0 px-0.5 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
+                                        <TableCell className="text-center py-0 px-0.5 whitespace-nowrap">{tubeBadge(feedMicro, feedFiber)}{ribbonBadge(feedRibbonColor, `R${feedRibbon}`)}</TableCell>
+                                        <TableCell className="text-center py-0 px-0.5">
+                                          <StrandBadge n={feedStrand} micro={feedMicro} />
                                         </TableCell>
-                                        <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">{circuitPrefix},{circuitNumber}</TableCell>
-                                        <TableCell className="text-center py-1 px-2">
-                                          <div className={`inline-block px-1.5 py-0.5 rounded border border-black ${distColor.bg} ${distColor.text} font-mono font-semibold text-xs`}>
-                                            {distStrand}
-                                          </div>
+                                        <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">{circuitPrefix},{circuitNumber}</TableCell>
+                                        <TableCell className="text-center py-0 px-0.5">
+                                          <StrandBadge n={distStrand} micro={distMicro} />
                                         </TableCell>
-                                        <TableCell className="text-center py-1 px-2 whitespace-nowrap"><span className={`inline-block px-1.5 py-0.5 rounded border border-black ${distRibbonColor.bg} ${distRibbonColor.text} font-mono font-semibold text-xs`}>R{distRibbon}</span></TableCell>
-                                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
+                                        <TableCell className="text-center py-0 px-0.5 whitespace-nowrap">{tubeBadge(distMicro, distFiber)}{ribbonBadge(distRibbonColor, `R${distRibbon}`)}</TableCell>
+                                        <TableCell className="text-center font-mono py-0 px-0.5 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
                                       </TableRow>
                                     );
                                   }
@@ -1973,9 +2070,14 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                         </Table>
                       </div>
                     )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                  </div>
+                  <div className="flex justify-center py-2">
+                    <Button variant="destructive" size="sm" onClick={() => setSpliceMappingCableId(null)} className="px-6">
+                      Return
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             );
           })}
 
@@ -1991,6 +2093,12 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
             // Calculate total rows by matching the rendering logic exactly
             let totalSpliceRows = 0;
             feedSplicedCircuits.forEach((circuit) => {
+              const feedCableUnits = circuit.feedCableId ? cables.find((c) => c.id === circuit.feedCableId) : undefined;
+              const distCableUnits = cables.find((c) => c.id === circuit.cableId);
+              const feedMicro = feedCableUnits?.microFiber === 1;
+              const distMicro = distCableUnits?.microFiber === 1;
+              const feedUnit = feedMicro ? MICRO_TUBE_SIZE : 12;
+              const distUnit = distMicro ? MICRO_TUBE_SIZE : 12;
               const distFiberStart = circuit.fiberStart;
               const distFiberEnd = circuit.fiberEnd;
               const feedFiberStart = circuit.feedFiberStart || circuit.fiberStart;
@@ -2029,12 +2137,14 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
             });
             
             return (
-              <TabsContent key={`feed-${feedCable.id}`} value={`feed-splice-${feedCable.id}`}>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base font-bold text-center pl-16">{displayName(feedCable)}-{feedCable.fiberCount}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
+              <Dialog
+                  key={`feed-${feedCable.id}`}
+                  open={spliceMappingCableId === feedCable.id && spliceMappingType === "feed"}
+                  onOpenChange={(open) => { if (!open) setSpliceMappingCableId(null); }}
+                >
+                  <DialogContent fullscreen aria-describedby={undefined} className="px-1 pt-8 pb-12 gap-0 overflow-y-auto [&>button]:hidden flex flex-col">
+                    <DialogTitle className="text-center text-sm font-semibold pl-16">{displayName(feedCable)}-{feedCable.fiberCount}</DialogTitle>
+                    <div className="overflow-x-auto flex-1">
                     {circuitsLoading ? (
                       <div className="text-center py-12 text-muted-foreground">Loading circuits...</div>
                     ) : feedSplicedCircuits.length === 0 ? (
@@ -2043,12 +2153,12 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                       </div>
                     ) : (
                       <div className="w-full max-w-full overflow-x-auto rounded-md border">
-                        <Table className="min-w-max text-sm">
+                        <Table className="text-xs w-full">
                           <TableHeader>
                             <TableRow className="bg-muted/50">
-                              <TableHead rowSpan={3} className="text-center font-semibold py-1 px-2 whitespace-nowrap align-middle w-16">#</TableHead>
-                              <TableHead colSpan={useRibbonView ? 2 : 3} rowSpan={2} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-1 px-2 align-middle">Feed</TableHead>
-                              <TableHead className="text-center py-1 px-2">
+                              <TableHead rowSpan={3} className="text-center font-semibold py-0 px-0.5 whitespace-nowrap align-middle w-16">#</TableHead>
+                              <TableHead colSpan={3} rowSpan={2} className="text-center font-semibold bg-green-100 dark:bg-green-950/50 py-0 px-0.5 align-middle">Feed</TableHead>
+                              <TableHead className="text-center py-0 px-0.5">
                                 <div className="flex items-center justify-center gap-1">
                                   <Label htmlFor={`view-toggle-feed-${feedCable.id}`} className="text-xs text-muted-foreground">Strands</Label>
                                   <Switch
@@ -2061,24 +2171,24 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                   <Label htmlFor={`view-toggle-feed-${feedCable.id}`} className="text-xs text-muted-foreground">Ribbons</Label>
                                 </div>
                               </TableHead>
-                              <TableHead colSpan={useRibbonView ? 2 : 3} rowSpan={2} className="text-center font-semibold bg-blue-100 dark:bg-blue-950/50 py-1 px-2 align-middle">Distribution</TableHead>
+                              <TableHead colSpan={3} rowSpan={2} className="text-center font-semibold bg-blue-100 dark:bg-blue-950/50 py-0 px-0.5 align-middle">Distribution</TableHead>
                             </TableRow>
                             <TableRow className="bg-muted/50">
-                              <TableHead className="text-center font-semibold py-1 px-2 whitespace-nowrap">Splices : {totalSpliceRows}</TableHead>
+                              <TableHead className="text-center font-semibold py-0 px-0.5 whitespace-nowrap">Splices : {totalSpliceRows}</TableHead>
                             </TableRow>
                             <TableRow>
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                              <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">Cable</TableHead>
+                              <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">
                                 <SpliceSortHeader
-                                  label="Ribbon"
+                                  label={sideIsMicro(feedSplicedCircuits, "feed") ? "(Tube) Ribbon" : "Ribbon"}
                                   mode="feed"
                                   value={feedSort}
                                   onChange={(mode) => setSpliceSort(feedSortKey, mode)}
                                   idPrefix={feedSortKey}
                                 />
                               </TableHead>
-                              {!useRibbonView && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                              <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">Strand</TableHead>
+                              <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">
                                 <SpliceSortHeader
                                   label="Circuit"
                                   mode="circuit"
@@ -2087,17 +2197,17 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                   idPrefix={feedSortKey}
                                 />
                               </TableHead>
-                              {!useRibbonView && <TableHead className="text-center py-1 px-2 whitespace-nowrap">Strand</TableHead>}
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">
+                              <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">Strand</TableHead>
+                              <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">
                                 <SpliceSortHeader
-                                  label="Ribbon"
+                                  label={sideIsMicro(feedSplicedCircuits, "dist") ? "(Tube) Ribbon" : "Ribbon"}
                                   mode="dist"
                                   value={feedSort}
                                   onChange={(mode) => setSpliceSort(feedSortKey, mode)}
                                   idPrefix={feedSortKey}
                                 />
                               </TableHead>
-                              <TableHead className="text-center py-1 px-2 whitespace-nowrap">Cable</TableHead>
+                              <TableHead className="text-center py-0 px-0.5 whitespace-nowrap">Cable</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -2106,6 +2216,12 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                               let prevFeedCableKey = "";
                               let feedCableGroupIdx = -1;
                               return feedSplicedCircuits.flatMap((circuit) => {
+                                const feedCableUnits = circuit.feedCableId ? cables.find((c) => c.id === circuit.feedCableId) : undefined;
+                                const distCableUnits = cables.find((c) => c.id === circuit.cableId);
+                                const feedMicro = feedCableUnits?.microFiber === 1;
+                                const distMicro = distCableUnits?.microFiber === 1;
+                                const feedUnit = feedMicro ? MICRO_TUBE_SIZE : 12;
+                                const distUnit = distMicro ? MICRO_TUBE_SIZE : 12;
                                 const distributionCable = cables.find((c) => c.id === circuit.cableId);
 
                                 // Alternate background color on cable change
@@ -2125,20 +2241,45 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                   { name: "green", bg: "bg-green-600", text: "text-white", colorClass: "text-green-600" },
                                   { name: "brown", bg: "bg-amber-700", text: "text-white", colorClass: "text-amber-700" },
                                   { name: "slate", bg: "bg-slate-500", text: "text-white", colorClass: "text-slate-500" },
-                                  { name: "white", bg: "bg-white", text: "text-black", colorClass: "text-slate-700" },
+                                  { name: "white", bg: "bg-white", text: "text-black", colorClass: "text-black", ribbonBg: "bg-white", ribbonText: "text-black", ribbonBorder: "border-black" },
                                   { name: "red", bg: "bg-red-600", text: "text-white", colorClass: "text-red-600" },
-                                  { name: "black", bg: "bg-black", text: "text-white", colorClass: "text-slate-900" },
+                                  { name: "black", bg: "bg-black", text: "text-white", colorClass: "text-gray-400", ribbonBg: "bg-black", ribbonText: "text-gray-400", ribbonBorder: "border-black" },
                                   { name: "yellow", bg: "bg-yellow-400", text: "text-black", colorClass: "text-yellow-500" },
                                   { name: "violet", bg: "bg-purple-600", text: "text-white", colorClass: "text-purple-600" },
                                   { name: "pink", bg: "bg-pink-500", text: "text-white", colorClass: "text-pink-500" },
                                   { name: "aqua", bg: "bg-cyan-400", text: "text-black", colorClass: "text-cyan-500" },
                                 ];
                                 
-                                const ribbonSize = 12;
-                                const getRibbonNumber = (fiber: number) => Math.ceil(fiber / ribbonSize);
-                                const getFiberPositionInRibbon = (fiber: number) => ((fiber - 1) % ribbonSize) + 1;
-                                const getColorForStrand = (strand: number) => fiberColors[(strand - 1) % 12];
+                                // Micro-fiber is a property of the CABLE, not a view mode: a micro cable counts
+                                // 36 to a tube, a standard cable 12 to a ribbon, so each side of a splice row
+                                // is measured and coloured by its own cable.
+                                const getRibbonNumber = (fiber: number, unit: number = 12) => Math.ceil(fiber / unit);
+                                const getFiberPositionInRibbon = (fiber: number, unit: number = 12) => ((fiber - 1) % unit) + 1;
+                                const getColorForStrand = (strand: number, micro = false) => micro ? getMicroStrandColor(strand) : fiberColors[(strand - 1) % 12];
                                 const getColorForRibbon = (ribbon: number) => fiberColors[(ribbon - 1) % 12];
+                                // Outline-style ribbon chip: tinted border + text, with solid fills only
+                                // for white and black, which would otherwise be unreadable.
+                                const ribbonBadge = (color: { colorClass: string; ribbonBg?: string; ribbonText?: string; ribbonBorder?: string }, label: string) => {
+                                  if (color.ribbonBg) {
+                                    return <span className={`inline-block px-0.5 rounded border ${color.ribbonBorder} ${color.ribbonBg} ${color.ribbonText} font-mono font-semibold text-xs`}>{label}</span>;
+                                  }
+                                  return <span className={`inline-block px-0.5 rounded border font-mono font-semibold text-xs ${color.colorClass}`} style={{ borderColor: 'currentColor' }}>{label}</span>;
+                                };
+                                  // Tube chip shown beside the ribbon on a micro cable. Tube N shares ribbon
+                                  // N's colour, so the two read as one code.
+                                  const tubeBadge = (micro: boolean, fiber: number) => {
+                                    if (!micro) return null;
+                                    const tube = getMicroTubeNumber(fiber);
+                                    return <span className="mr-2">{ribbonBadge(getColorForRibbon(tube), `(T${tube})`)}</span>;
+                                  };
+                                const StrandBadge = ({ n, micro }: { n: number; micro: boolean }) => {
+                                  const c = getColorForStrand(n, micro);
+                                  return (
+                                    <span className={`inline-flex items-center px-0.5 rounded border border-black ${c.bg} ${c.text} font-mono font-semibold text-xs`}>
+                                      {n}{micro && <RingMarks count={getMicroRingCount(n)} />}
+                                    </span>
+                                  );
+                                };
                                 
                                 // Parse circuit ID to get the circuit numbers
                                 const circuitIdParts = circuit.circuitId.split(',');
@@ -2151,8 +2292,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                   rowNumber++;
                                   return [(
                                     <TableRow key={circuit.id} className={rowBgColor} data-testid={`row-feed-spliced-circuit-${circuit.id}`}>
-                                      <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                                      <TableCell colSpan={useRibbonView ? 4 : 6} className="text-center text-muted-foreground">
+                                      <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
+                                      <TableCell colSpan={6} className="text-center text-muted-foreground">
                                         Circuit {circuit.circuitId} in {distributionCable?.name} - Invalid circuit ID format.
                                       </TableCell>
                                     </TableRow>
@@ -2167,8 +2308,8 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                   rowNumber++;
                                   return [(
                                     <TableRow key={circuit.id} className={rowBgColor} data-testid={`row-feed-spliced-circuit-${circuit.id}`}>
-                                      <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                                      <TableCell colSpan={useRibbonView ? 4 : 6} className="text-center text-muted-foreground">
+                                      <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
+                                      <TableCell colSpan={6} className="text-center text-muted-foreground">
                                         Circuit {circuit.circuitId} in {distributionCable?.name} - Invalid circuit number range.
                                       </TableCell>
                                     </TableRow>
@@ -2190,7 +2331,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                     rowNumber++;
                                     return [(
                                       <TableRow key={circuit.id} className={rowBgColor} data-testid={`row-feed-spliced-circuit-${circuit.id}`}>
-                                        <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
+                                        <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
                                         <TableCell colSpan={4} className="text-center text-muted-foreground">
                                           Circuit {circuit.circuitId} in {distributionCable?.name} - Invalid fiber positions.
                                         </TableCell>
@@ -2206,10 +2347,10 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                     const currentDistRibbon = getRibbonNumber(currentDistFiber);
                                     const currentFeedRibbon = getRibbonNumber(currentFeedFiber);
                                     
-                                    const distRibbonEnd = currentDistRibbon * ribbonSize;
+                                    const distRibbonEnd = currentDistRibbon * 12;
                                     const distSegmentEnd = Math.min(distRibbonEnd, distFiberEnd);
                                     
-                                    const feedRibbonEnd = currentFeedRibbon * ribbonSize;
+                                    const feedRibbonEnd = currentFeedRibbon * 12;
                                     const feedSegmentEnd = Math.min(feedRibbonEnd, feedFiberEnd);
                                     
                                     const distFiberCount = distSegmentEnd - currentDistFiber + 1;
@@ -2220,10 +2361,10 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                     const circuitStart = rangeStart + fiberOffset;
                                     const circuitEnd = circuitStart + segmentFiberCount - 1;
                                     
-                                    const distStrandStart = getFiberPositionInRibbon(currentDistFiber);
-                                    const distStrandEnd = getFiberPositionInRibbon(currentDistFiber + segmentFiberCount - 1);
-                                    const feedStrandStart = getFiberPositionInRibbon(currentFeedFiber);
-                                    const feedStrandEnd = getFiberPositionInRibbon(currentFeedFiber + segmentFiberCount - 1);
+                                    const distStrandStart = getFiberPositionInRibbon(currentDistFiber, distUnit);
+                                    const distStrandEnd = getFiberPositionInRibbon(currentDistFiber + segmentFiberCount - 1, distUnit);
+                                    const feedStrandStart = getFiberPositionInRibbon(currentFeedFiber, feedUnit);
+                                    const feedStrandEnd = getFiberPositionInRibbon(currentFeedFiber + segmentFiberCount - 1, feedUnit);
                                     
                                     const feedRibbonColor = getColorForRibbon(currentFeedRibbon);
                                     const distRibbonColor = getColorForRibbon(currentDistRibbon);
@@ -2231,30 +2372,38 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                     rowNumber++;
                                     ribbonRows.push(
                                       <TableRow key={`${circuit.id}-feed-segment-${currentDistFiber}`} className={rowBgColor} data-testid={`row-feed-ribbon-${circuit.id}-${currentDistFiber}`}>
-                                        <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
-                                        <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">
-                                          <span className="inline-flex items-center gap-2">
-                                            <span className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedRibbonColor.bg} ${feedRibbonColor.text} font-mono font-semibold text-xs`}>R{currentFeedRibbon}</span><span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
-                                            <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(feedStrandStart).bg} ${getColorForStrand(feedStrandStart).text} font-mono font-semibold text-xs`}>{feedStrandStart}</span>
+                                        <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
+                                        <TableCell className="text-center font-mono py-0 px-0.5 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
+                                        <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">
+                                          <span className="inline-flex items-center justify-start min-w-[4.5rem]">
+                                            {tubeBadge(feedMicro, currentFeedFiber)}{ribbonBadge(feedRibbonColor, `R${currentFeedRibbon}`)}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">
+                                          <span className="inline-flex items-center gap-0.5">
+                                            <StrandBadge n={feedStrandStart} micro={feedMicro} />
                                             {feedStrandStart !== feedStrandEnd && <>
                                               <span>-</span>
-                                              <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(feedStrandEnd).bg} ${getColorForStrand(feedStrandEnd).text} font-mono font-semibold text-xs`}>{feedStrandEnd}</span>
+                                              <StrandBadge n={feedStrandEnd} micro={feedMicro} />
                                             </>}
                                           </span>
                                         </TableCell>
-                                        <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">{circuitPrefix},{circuitStart}-{circuitEnd}</TableCell>
-                                        <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">
-                                          <span className="inline-flex items-center gap-2">
-                                            <span className={`inline-block px-1.5 py-0.5 rounded border border-black ${distRibbonColor.bg} ${distRibbonColor.text} font-mono font-semibold text-xs`}>R{currentDistRibbon}</span><span className="text-lg font-bold text-muted-foreground leading-none" aria-hidden="true">✱</span>
-                                            <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(distStrandStart).bg} ${getColorForStrand(distStrandStart).text} font-mono font-semibold text-xs`}>{distStrandStart}</span>
+                                        <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">{circuitPrefix},{circuitStart}-{circuitEnd}</TableCell>
+                                        <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">
+                                          <span className="inline-flex items-center gap-0.5">
+                                            <StrandBadge n={distStrandStart} micro={distMicro} />
                                             {distStrandStart !== distStrandEnd && <>
                                               <span>-</span>
-                                              <span className={`inline-block px-1 py-0.5 rounded border border-black ${getColorForStrand(distStrandEnd).bg} ${getColorForStrand(distStrandEnd).text} font-mono font-semibold text-xs`}>{distStrandEnd}</span>
+                                              <StrandBadge n={distStrandEnd} micro={distMicro} />
                                             </>}
                                           </span>
                                         </TableCell>
-                                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
+                                        <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">
+                                          <span className="inline-flex items-center justify-start min-w-[4.5rem]">
+                                            {tubeBadge(distMicro, currentDistFiber)}{ribbonBadge(distRibbonColor, `R${currentDistRibbon}`)}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="text-center font-mono py-0 px-0.5 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
                                       </TableRow>
                                     );
                                     
@@ -2271,7 +2420,7 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                     rowNumber++;
                                     return [(
                                       <TableRow key={circuit.id} className={rowBgColor} data-testid={`row-feed-spliced-circuit-${circuit.id}`}>
-                                        <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
+                                        <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
                                         <TableCell colSpan={6} className="text-center text-muted-foreground">
                                           Circuit {circuit.circuitId} in {distributionCable?.name} - Invalid fiber positions.
                                         </TableCell>
@@ -2284,35 +2433,31 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                                     const feedFiber = (circuit.feedFiberStart || circuit.fiberStart) + i;
                                     
                                     const distRibbon = getRibbonNumber(distFiber);
-                                    const distStrand = getFiberPositionInRibbon(distFiber);
+                                    const distStrand = getFiberPositionInRibbon(distFiber, distUnit);
                                     const feedRibbon = getRibbonNumber(feedFiber);
-                                    const feedStrand = getFiberPositionInRibbon(feedFiber);
+                                    const feedStrand = getFiberPositionInRibbon(feedFiber, feedUnit);
                                     
                                     const circuitNumber = rangeStart + i;
-                                    const feedColor = getColorForStrand(feedStrand);
-                                    const distColor = getColorForStrand(distStrand);
+                                    const feedColor = getColorForStrand(feedStrand, feedMicro);
+                                    const distColor = getColorForStrand(distStrand, distMicro);
                                     const feedRibbonColor = getColorForRibbon(feedRibbon);
                                     const distRibbonColor = getColorForRibbon(distRibbon);
                                     
                                     rowNumber++;
                                     fiberRows.push(
                                       <TableRow key={`${circuit.id}-feed-fiber-${i}`} className={rowBgColor} data-testid={`row-feed-fiber-${circuit.id}-${i}`}>
-                                        <TableCell className="text-center font-mono py-1 px-2">{rowNumber}</TableCell>
-                                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
-                                        <TableCell className="text-center py-1 px-2 whitespace-nowrap"><span className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedRibbonColor.bg} ${feedRibbonColor.text} font-mono font-semibold text-xs`}>R{feedRibbon}</span></TableCell>
-                                        <TableCell className="text-center py-1 px-2">
-                                          <div className={`inline-block px-1.5 py-0.5 rounded border border-black ${feedColor.bg} ${feedColor.text} font-mono font-semibold text-xs`}>
-                                            {feedStrand}
-                                          </div>
+                                        <TableCell className="text-center font-mono py-0 px-0.5">{rowNumber}</TableCell>
+                                        <TableCell className="text-center font-mono py-0 px-0.5 whitespace-nowrap">{displayName(feedCable)}-{feedCable.fiberCount}</TableCell>
+                                        <TableCell className="text-center py-0 px-0.5 whitespace-nowrap">{tubeBadge(feedMicro, feedFiber)}{ribbonBadge(feedRibbonColor, `R${feedRibbon}`)}</TableCell>
+                                        <TableCell className="text-center py-0 px-0.5">
+                                          <StrandBadge n={feedStrand} micro={feedMicro} />
                                         </TableCell>
-                                        <TableCell className="text-center font-mono font-semibold py-1 px-2 whitespace-nowrap">{circuitPrefix},{circuitNumber}</TableCell>
-                                        <TableCell className="text-center py-1 px-2">
-                                          <div className={`inline-block px-1.5 py-0.5 rounded border border-black ${distColor.bg} ${distColor.text} font-mono font-semibold text-xs`}>
-                                            {distStrand}
-                                          </div>
+                                        <TableCell className="text-center font-mono font-semibold py-0 px-0.5 whitespace-nowrap">{circuitPrefix},{circuitNumber}</TableCell>
+                                        <TableCell className="text-center py-0 px-0.5">
+                                          <StrandBadge n={distStrand} micro={distMicro} />
                                         </TableCell>
-                                        <TableCell className="text-center py-1 px-2 whitespace-nowrap"><span className={`inline-block px-1.5 py-0.5 rounded border border-black ${distRibbonColor.bg} ${distRibbonColor.text} font-mono font-semibold text-xs`}>R{distRibbon}</span></TableCell>
-                                        <TableCell className="text-center font-mono py-1 px-2 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
+                                        <TableCell className="text-center py-0 px-0.5 whitespace-nowrap">{tubeBadge(distMicro, distFiber)}{ribbonBadge(distRibbonColor, `R${distRibbon}`)}</TableCell>
+                                        <TableCell className="text-center font-mono py-0 px-0.5 whitespace-nowrap">{distributionCable?.name}-{distributionCable?.fiberCount}</TableCell>
                                       </TableRow>
                                     );
                                   }
@@ -2325,9 +2470,14 @@ export default function Home({ mode, setMode }: { mode: "fiber" | "copper"; setM
                         </Table>
                       </div>
                     )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                  </div>
+                  <div className="flex justify-center py-2">
+                    <Button variant="destructive" size="sm" onClick={() => setSpliceMappingCableId(null)} className="px-6">
+                      Return
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             );
           })}
         </Tabs>

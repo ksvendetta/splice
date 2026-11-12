@@ -34,6 +34,7 @@ export const cables = pgTable("cables", {
   type: text("type").notNull(),
   parentCableId: varchar("parent_cable_id"), // For sub-splices: which distribution cable this stems from
   spliceName: varchar("splice_name"), // Optional display name for splice context (shown in tree instead of cable name)
+  microFiber: integer("micro_fiber").default(0), // 1 = micro-fiber (36 strands per tube) color coding
 });
 
 // Circuits table - represents circuit IDs and fiber assignments within a cable
@@ -94,6 +95,7 @@ export const insertCableSchema = createInsertSchema(cables).omit({
   circuitIds: z.array(z.string()).optional(), // Circuit IDs to create with cable
   parentCableId: z.string().optional(), // For sub-splices: which distribution cable this stems from
   spliceName: z.string().optional(), // Optional display name for splice context
+  microFiber: z.number().optional(), // 1 = micro-fiber (36 strands per tube) color coding
 });
 export const insertCircuitSchema = createInsertSchema(circuits).omit({ 
   id: true,

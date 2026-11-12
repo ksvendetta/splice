@@ -24,6 +24,7 @@ export const storage = {
       ...cable,
       parentCableId: cable.parentCableId ?? null,
       spliceName: cable.spliceName ?? null,
+      microFiber: cable.microFiber ?? 0,
     };
     await getDb(mode).cables.add(newCable);
     return newCable;

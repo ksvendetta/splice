@@ -80,10 +80,12 @@ export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber"
       name: cable.name,
       fiberCount: cable.fiberCount,
       type: cable.type as "Feed" | "Distribution",
+      microFiber: cable.microFiber ?? 0,
     } : {
       name: defaultName,
       fiberCount: mode === "fiber" ? 24 : 50,
       type: defaultType,
+      microFiber: 0,
       circuitIds: [],
     },
   });
@@ -219,6 +221,32 @@ export function CableForm({ cable, onSubmit, onCancel, isLoading, mode = "fiber"
             </FormItem>
           )}
         />
+
+        {mode === "fiber" && (
+          <FormField
+            control={form.control}
+            name="microFiber"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-start gap-3 space-y-0 rounded-md border p-3">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value === 1}
+                    onCheckedChange={(checked) => field.onChange(checked === true ? 1 : 0)}
+                    data-testid="checkbox-micro-fiber"
+                  />
+                </FormControl>
+                <div className="space-y-1 leading-none">
+                  <FormLabel className="cursor-pointer">Micro Fiber color coding</FormLabel>
+                  <FormDescription className="text-xs">
+                    High-density loose tube: 36 strands per tube, ring marked. Tubes run
+                    blue to black; fibers repeat the 12-color cycle with 1 and 2 black
+                    rings, and black becomes natural in the ringed cycles.
+                  </FormDescription>
+                </div>
+              </FormItem>
+            )}
+          />
+        )}
 
         {!cable && (
           <FormField
