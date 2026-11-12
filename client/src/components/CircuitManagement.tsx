@@ -25,7 +25,7 @@ import { normalizeCircuitId } from "@/lib/circuitIdUtils";
 import { HelpTip } from "@/components/HelpTip";
 import { setCircuitSpliced } from "@/lib/spliceCircuit";
 import { RingMarks } from "@/components/MicroFiberBadge";
-import { MICRO_TUBE_SIZE, getMicroRingCount, getMicroStrandColor, getMicroTubeColor, getMicroTubeNumber, microCellStyle } from "@/lib/microFiber";
+import { MICRO_TUBE_SIZE, getMicroRingCount, getMicroStrandColor, getMicroTubeColor, getMicroTubeNumber } from "@/lib/microFiber";
 
 interface CircuitManagementProps {
   cable: Cable;
@@ -751,7 +751,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
           </span>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 px-2 sm:px-6">
         <div className="flex gap-2 items-end">
           <div className="flex-1">
             <Label htmlFor="circuitId" className="text-xs">
@@ -840,19 +840,20 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
               <TableHeader>
                 <TableRow>
                   {cable.type === "Distribution" && !isContextFeed && (
-                    <TableHead className="w-[10%]">Splice</TableHead>
+                    <TableHead className="w-[10%] px-1 sm:px-4">Splice</TableHead>
                   )}
-                  <TableHead className={cable.type === "Distribution" && !isContextFeed ? "w-[30%]" : "w-[35%]"}>Circuit ID</TableHead>
-                  <TableHead>{mode === "fiber" ? "Ribbons/Strands" : "Binders/Pairs"}</TableHead>
-                  <TableHead className="w-[12%]">{mode === "fiber" ? "Fiber Count" : "Pair Count"}</TableHead>
-                  <TableHead className="w-[15%] text-right">Actions</TableHead>
+                  <TableHead className={`px-1 sm:px-4 ${cable.type === "Distribution" && !isContextFeed ? "w-[30%]" : "w-[35%]"}`}>Circuit ID</TableHead>
+                  {isMicro && <TableHead className="w-[10%] px-1 sm:px-4">Tube</TableHead>}
+                  <TableHead className="px-1 sm:px-4">{mode === "fiber" ? "Ribbons/Strands" : "Binders/Pairs"}</TableHead>
+                  <TableHead className="w-[12%] px-1 sm:px-4">{mode === "fiber" ? "Fiber Count" : "Pair Count"}</TableHead>
+                  <TableHead className="w-[15%] text-right px-1 sm:px-4">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {circuits.map((circuit, index) => {
                   const isEditing = editingCircuitId === circuit.id;
                   const isDeadCircuit = isDeadCircuitId(circuit.circuitId);
-                  const columnCount = cable.type === "Distribution" && !isContextFeed ? 5 : 4;
+                  const columnCount = (cable.type === "Distribution" && !isContextFeed ? 5 : 4) + (isMicro ? 1 : 0);
                   // While editing, keep it as one row so the input edits the whole circuit.
                   const tubeSegments = isMicro && !isEditing
                     ? splitCircuitByTube(circuit)
@@ -876,7 +877,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                       data-testid={`row-circuit-${circuit.id}${segSuffix}`}
                     >
                       {cable.type === "Distribution" && !isContextFeed && (
-                        <TableCell>
+                        <TableCell className="px-1 sm:px-4">
                           {isFirstSeg && (
                           <HelpTip text="Check to splice this circuit to the feed cable. Matches fibers by position." enabled={helpMode} side="right">
                             <span className="inline-flex">
@@ -891,7 +892,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                           )}
                         </TableCell>
                       )}
-                      <TableCell className="font-mono text-sm" data-testid={`text-circuit-id-${circuit.id}`}>
+                      <TableCell className="font-mono text-sm px-1 sm:px-4" data-testid={`text-circuit-id-${circuit.id}`}>
                         {isEditing ? (
                           <Input
                             value={editingCircuitValue}
@@ -915,18 +916,28 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                           </span>
                         )}
                       </TableCell>
+                      {isMicro && (() => {
+                        const tube = getMicroTubeNumber(seg.fiberStart);
+                        const tubeColor = getMicroTubeColor(tube);
+                        return (
+                          <TableCell className="text-sm px-1 sm:px-4" data-testid={`text-tube-${circuit.id}${segSuffix}`}>
+                            <span className={`inline-block px-2 py-0.5 rounded border border-black ${tubeColor.bg} ${tubeColor.text} font-mono font-semibold text-xs`}>
+                              T{tube}
+                            </span>
+                          </TableCell>
+                        );
+                      })()}
                       <TableCell
-                        className="font-mono text-sm"
-                        style={isMicro ? microCellStyle(getMicroTubeNumber(seg.fiberStart)) : undefined}
+                        className="font-mono text-sm px-1 sm:px-4"
                         data-testid={`text-fiber-range-${circuit.id}${segSuffix}`}
                       >
                         {ribbonDisplay}
                       </TableCell>
-                      <TableCell className="text-sm" data-testid={`text-fiber-count-${circuit.id}${segSuffix}`}>
+                      <TableCell className="text-sm px-1 sm:px-4" data-testid={`text-fiber-count-${circuit.id}${segSuffix}`}>
                         {seg.fiberEnd - seg.fiberStart + 1}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
+                      <TableCell className="text-right px-1 sm:px-4">
+                        <div className="flex flex-wrap sm:flex-nowrap justify-end gap-0.5 sm:gap-1 max-w-[52px] sm:max-w-none">
                           {!isFirstSeg ? null : isEditing ? (
                             <>
                               <Button
@@ -953,6 +964,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                                 <Button
                                   size="icon"
                                   variant="ghost"
+                                  className="h-6 w-6 sm:h-9 sm:w-9"
                                   onClick={() => handleStartEdit(circuit)}
                                   data-testid={`button-edit-circuit-${circuit.id}`}
                                 >
@@ -963,6 +975,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                                 <Button
                                   size="icon"
                                   variant="ghost"
+                                  className="h-6 w-6 sm:h-9 sm:w-9"
                                   onClick={() => moveCircuitMutation.mutate({ id: circuit.id, direction: "up" })}
                                   disabled={index === 0 || moveCircuitMutation.isPending}
                                   data-testid={`button-move-up-${circuit.id}`}
@@ -974,6 +987,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                                 <Button
                                   size="icon"
                                   variant="ghost"
+                                  className="h-6 w-6 sm:h-9 sm:w-9"
                                   onClick={() => moveCircuitMutation.mutate({ id: circuit.id, direction: "down" })}
                                   disabled={index === circuits.length - 1 || moveCircuitMutation.isPending}
                                   data-testid={`button-move-down-${circuit.id}`}
@@ -985,6 +999,7 @@ export function CircuitManagement({ cable, mode = "fiber", isContextFeed = false
                                 <Button
                                   size="icon"
                                   variant="ghost"
+                                  className="h-6 w-6 sm:h-9 sm:w-9"
                                   data-testid={`button-delete-circuit-${circuit.id}`}
                                   onClick={() => deleteCircuitMutation.mutate(circuit.id)}
                                   disabled={deleteCircuitMutation.isPending}
